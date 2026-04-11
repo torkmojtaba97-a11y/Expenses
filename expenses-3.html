@@ -9,38 +9,45 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{font-family:-apple-system,'Segoe UI',sans-serif;background:#f8fafc;max-width:480px;margin:0 auto;min-height:100vh;color:#0f172a}
-.header{background:linear-gradient(150deg,#0f172a,#1e293b);color:#fff;padding:18px 20px 22px;border-radius:0 0 28px 28px}
+.header{background:linear-gradient(150deg,#0f172a,#1e293b);color:#fff;padding:16px 20px 20px;border-radius:0 0 28px 28px}
 .header-top{display:flex;justify-content:space-between;align-items:center}
-.header h1{font-size:19px;font-weight:800}
+.header h1{font-size:18px;font-weight:800}
 .hbtns{display:flex;gap:5px;align-items:center}
 .hbtns button{background:rgba(255,255,255,.1);border:none;border-radius:10px;width:32px;height:32px;font-size:14px;cursor:pointer}
-.hero{margin-top:12px;background:rgba(255,255,255,.06);border-radius:16px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
-.hero-left .hl{font-size:10px;opacity:.6;letter-spacing:1.5px;text-transform:uppercase}
-.hero-left .hv{font-size:30px;font-weight:900;letter-spacing:-1.5px;margin-top:1px}
-.hero-left .hs{font-size:11px;opacity:.4;margin-top:1px}
-.hero-right{text-align:right}
-.hero-right .hl{font-size:10px;opacity:.5;letter-spacing:1px;text-transform:uppercase}
-.hero-right .hv{font-size:20px;font-weight:800;letter-spacing:-1px;margin-top:1px;color:#a5f3fc}
+.balance-card{margin-top:12px;background:rgba(255,255,255,.06);border-radius:16px;padding:14px 16px;text-align:center}
+.balance-label{font-size:10px;opacity:.5;letter-spacing:2px;text-transform:uppercase}
+.balance-amount{font-size:38px;font-weight:900;letter-spacing:-2px;margin:2px 0}
+.balance-amount.negative{color:#f87171}
+.balance-amount.positive{color:#34d399}
+.balance-row{display:flex;justify-content:space-around;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)}
+.balance-row .br-item{text-align:center}
+.balance-row .br-label{font-size:9px;opacity:.45;text-transform:uppercase;letter-spacing:1px}
+.balance-row .br-val{font-size:16px;font-weight:800;margin-top:1px}
+.br-val.income-color{color:#34d399}
+.br-val.expense-color{color:#f87171}
 .nav{display:flex;gap:3px;padding:8px 16px 2px}
 .nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 0;border:none;border-radius:11px;background:transparent;cursor:pointer;color:#94a3b8;font-size:10px}
 .nav button.active{background:#e2e8f0;color:#0f172a;font-weight:700}
-.nav button .ni{font-size:17px}
+.nav button .ni{font-size:16px}
 .content{padding:8px 18px 95px}
 .sh{font-size:14px;font-weight:800;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
 .empty{text-align:center;padding:24px;color:#94a3b8;font-size:13px;background:#fff;border-radius:14px}
-.row{display:flex;align-items:center;gap:9px;background:#fff;border-radius:14px;padding:10px 12px;margin-bottom:6px;box-shadow:0 1px 3px rgba(0,0,0,.04);position:relative}
+.row{display:flex;align-items:center;gap:9px;background:#fff;border-radius:14px;padding:10px 12px;margin-bottom:6px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.row.income-row{border-left:3px solid #34d399}
 .row .ci{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
 .row .info{flex:1;min-width:0}
 .row .info .t{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .row .info .d{font-size:10px;color:#94a3b8;margin-top:1px}
 .row .amt{font-weight:800;font-size:14px;white-space:nowrap;margin-right:2px}
+.row .amt.green{color:#16a34a}
+.row .amt.red{color:#dc2626}
 .row .actions button{background:none;border:none;font-size:13px;cursor:pointer;padding:3px 5px;border-radius:6px;color:#cbd5e1}
 .stat-row{display:flex;gap:6px;margin-bottom:6px}
 .sc{flex:1;background:#fff;border-radius:14px;padding:10px 8px;box-shadow:0 1px 3px rgba(0,0,0,.04);text-align:center}
 .sc .sl{font-size:10px;color:#94a3b8;margin-bottom:1px}
-.sc .sv{font-size:17px;font-weight:900}
-.tc{background:#fff;border-radius:18px;padding:20px 16px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.04);margin-bottom:12px}
-.tc .big{font-size:36px;font-weight:900;color:#dc2626;letter-spacing:-1.5px;margin:3px 0}
+.sc .sv{font-size:16px;font-weight:900}
+.tc{background:#fff;border-radius:18px;padding:18px 16px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.04);margin-bottom:10px}
+.tc .big{font-size:34px;font-weight:900;letter-spacing:-1.5px;margin:3px 0}
 .barbg{height:8px;background:#f1f5f9;border-radius:6px;overflow:hidden}
 .barbg .bf{height:100%;border-radius:6px;transition:width .4s}
 .cr{margin-bottom:12px}
@@ -48,8 +55,10 @@ body{font-family:-apple-system,'Segoe UI',sans-serif;background:#f8fafc;max-widt
 .cr .ch .ct{font-weight:700}
 .cr .pct{font-size:10px;color:#94a3b8;margin-top:1px}
 select{border:2px solid #e2e8f0;border-radius:9px;padding:5px 8px;font-size:12px;background:#fff;font-weight:600}
-.fab{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);width:54px;height:54px;border-radius:50%;background:#0f172a;border:none;cursor:pointer;box-shadow:0 6px 24px rgba(15,23,42,.35);display:flex;align-items:center;justify-content:center;z-index:10}
-.fab svg{width:24px;height:24px}
+.fab-wrap{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:10px;z-index:10}
+.fab{width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700}
+.fab-expense{background:#0f172a;color:#fff}
+.fab-income{background:#16a34a;color:#fff}
 .overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:20;display:flex;align-items:flex-end;justify-content:center;backdrop-filter:blur(2px)}
 .modal{background:#fff;border-radius:22px 22px 0 0;padding:20px 20px 30px;width:100%;max-width:480px;max-height:88vh;overflow-y:auto}
 .mh{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
@@ -57,12 +66,14 @@ select{border:2px solid #e2e8f0;border-radius:9px;padding:5px 8px;font-size:12px
 .mh button{background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8}
 .fl{display:block;font-size:10px;font-weight:700;color:#64748b;margin-bottom:4px;margin-top:12px;text-transform:uppercase;letter-spacing:.8px}
 .ib{width:100%;padding:12px 14px;border:2px solid #e2e8f0;border-radius:12px;font-size:28px;font-weight:800;text-align:center;outline:none}
+.ib-income{border-color:#bbf7d0}
 .if{width:100%;padding:10px 12px;border:2px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none}
 .cg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .cb{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 3px;border-radius:12px;cursor:pointer;border:2px solid #e2e8f0;background:#f8fafc}
 .cb .ce{font-size:20px}
 .cb .cl{font-size:9px;color:#64748b}
 .sbtn{width:100%;padding:12px;border:none;border-radius:12px;background:#0f172a;color:#fff;font-size:15px;font-weight:700;cursor:pointer;margin-top:10px}
+.sbtn-income{background:#16a34a}
 .sbtn:disabled{opacity:.4}
 .dbtn{background:#fee2e2;color:#dc2626;border:none;padding:12px;border-radius:12px;width:100%;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px}
 .sw{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
@@ -81,9 +92,18 @@ select{border:2px solid #e2e8f0;border-radius:9px;padding:5px 8px;font-size:12px
 .badge{display:inline-block;font-size:9px;padding:2px 6px;border-radius:6px;font-weight:600;margin-left:4px}
 .week-chart{display:flex;align-items:flex-end;gap:3px;height:60px;margin:8px 0}
 .week-chart .bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px}
-.week-chart .bar{width:100%;border-radius:4px 4px 0 0;background:#e2e8f0;min-height:2px;transition:height .3s}
-.week-chart .bar.today{background:#0f172a}
+.week-chart .bar{width:100%;border-radius:4px 4px 0 0;min-height:2px;transition:height .3s}
 .week-chart .bar-label{font-size:8px;color:#94a3b8}
+.date-range{background:#fff;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:10px}
+.date-range .dr-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.date-range .dr-row input{flex:1}
+.date-range .dr-result{text-align:center;padding:10px;background:#f8fafc;border-radius:10px}
+.date-range .dr-result .dr-label{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px}
+.date-range .dr-result .dr-val{font-size:24px;font-weight:900;margin-top:2px}
+.script-box{background:#0f172a;border-radius:12px;padding:14px;margin:10px 0;position:relative}
+.script-box pre{color:#a5f3fc;font-size:9px;line-height:1.4;white-space:pre-wrap;word-break:break-all;margin:0;max-height:140px;overflow:auto}
+.script-box button{position:absolute;top:8px;right:8px;background:#334155;color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:11px;cursor:pointer;font-weight:600}
+.update-banner{background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:#92400e;line-height:1.5}
 </style>
 </head>
 <body>
@@ -100,43 +120,93 @@ const CATS=[
 {id:"home",label:"Home",icon:"🏠",color:"#92400e"},
 {id:"other",label:"Other",icon:"📦",color:"#475569"},
 ];
+const INCOME_CATS=[
+{id:"salary",label:"Salary",icon:"💼",color:"#16a34a"},
+{id:"commission",label:"Commission",icon:"🤝",color:"#059669"},
+{id:"freelance",label:"Freelance",icon:"💻",color:"#0d9488"},
+{id:"gift",label:"Gift",icon:"🎁",color:"#7c3aed"},
+{id:"refund",label:"Refund",icon:"↩️",color:"#2563eb"},
+{id:"other_inc",label:"Other",icon:"💰",color:"#64748b"},
+];
 const MO=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-const fmt=n=>"₱"+Math.round(n).toLocaleString();
+const fmt=n=>"₱"+Math.round(Math.abs(n)).toLocaleString();
 const td=()=>new Date().toISOString().slice(0,10);
 const mk=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")};
 const ml=k=>{const[y,m]=k.split("-");return MO[parseInt(m)-1]+" "+y};
-const gc=id=>CATS.find(c=>c.id===id)||CATS[8];
+const gc=id=>CATS.find(c=>c.id===id)||INCOME_CATS.find(c=>c.id===id)||{id:"other",label:"Other",icon:"📦",color:"#475569"};
 const timeStr=ts=>{if(!ts)return"";const d=new Date(typeof ts==="number"?ts:parseInt(ts));return isNaN(d)?"":d.getHours().toString().padStart(2,"0")+":"+d.getMinutes().toString().padStart(2,"0")};
+
+const NEW_SCRIPT=`function doGet(e){return handle(e)}
+function doPost(e){return handle(e)}
+function handle(e){
+  var ss=SpreadsheetApp.getActiveSpreadsheet();
+  var sh=ss.getSheetByName("Expenses")||ss.insertSheet("Expenses");
+  if(sh.getLastRow()===0)
+    sh.appendRow(["ID","Amount","Category","Desc","Date","Timestamp","Type"]);
+  var p=e.parameter,res={};
+  if(p.action==="get"){
+    var d=sh.getDataRange().getValues(),out=[];
+    for(var i=1;i<d.length;i++){
+      if(d[i][0])out.push({id:d[i][0],amount:d[i][1],category:d[i][2],
+        desc:d[i][3],date:d[i][4],ts:d[i][5],type:d[i][6]||"expense"});
+    }
+    res={ok:true,data:out};
+  }else if(p.action==="add"){
+    sh.appendRow([p.id,parseFloat(p.amount),p.category,
+      p.desc||"",p.date,Date.now(),p.type||"expense"]);
+    res={ok:true};
+  }else if(p.action==="delete"){
+    var d=sh.getDataRange().getValues();
+    for(var i=1;i<d.length;i++){
+      if(d[i][0]===p.id){sh.deleteRow(i+1);break}
+    }
+    res={ok:true};
+  }
+  return ContentService.createTextOutput(
+    JSON.stringify(res)).setMimeType(
+    ContentService.MimeType.JSON);
+}`;
 
 let S={
   url:localStorage.getItem("expense_url")||"",
   connected:false,
-  expenses:[],
+  data:[],
   page:"home",
   showAdd:false,
+  showAddIncome:false,
   showEdit:null,
   viewMonth:mk(),
   form:{amount:"",category:"grocery",desc:"",date:td()},
+  incForm:{amount:"",category:"salary",desc:"",date:td()},
   editForm:{},
   status:"",
   syncing:false,
   search:"",
   filterCat:"all",
+  drFrom:"",
+  drTo:"",
+  showScript:false,
+  copied:false,
 };
+
+const expenses=()=>S.data.filter(d=>d.type!=="income");
+const incomes=()=>S.data.filter(d=>d.type==="income");
+const totalIncome=arr=>arr.reduce((s,e)=>s+(e.amount||0),0);
+const totalExpense=arr=>arr.reduce((s,e)=>s+(e.amount||0),0);
 
 async function api(p){const q=new URLSearchParams(p).toString();const r=await fetch(S.url+"?"+q);return r.json()}
 
 async function loadData(){
   S.syncing=true;render();
-  try{const r=await api({action:"get"});if(r.ok)S.expenses=r.data}catch(e){}
+  try{const r=await api({action:"get"});if(r.ok)S.data=r.data}catch(e){}
   S.syncing=false;render();
 }
 
 async function tryConnect(){
   if(!S.url.trim())return;S.status="testing";render();
   try{const r=await fetch(S.url.trim()+"?action=get");const d=await r.json();
-    if(d.ok){S.status="ok";S.connected=true;S.expenses=d.data||[];localStorage.setItem("expense_url",S.url.trim())}
+    if(d.ok){S.status="ok";S.connected=true;S.data=d.data||[];localStorage.setItem("expense_url",S.url.trim())}
     else S.status="fail";
   }catch(e){S.status="fail"}render();
 }
@@ -144,25 +214,32 @@ async function tryConnect(){
 async function addExpense(){
   if(!S.form.amount)return;
   const id=Date.now().toString(36)+Math.random().toString(36).slice(2,5);
-  const ts=Date.now();
-  const entry={id,amount:parseFloat(S.form.amount),category:S.form.category,desc:S.form.desc,date:S.form.date,ts};
-  S.expenses.push(entry);S.form={amount:"",category:"grocery",desc:"",date:td()};S.showAdd=false;render();
+  const entry={id,amount:parseFloat(S.form.amount),category:S.form.category,desc:S.form.desc,date:S.form.date,ts:Date.now(),type:"expense"};
+  S.data.push(entry);S.form={amount:"",category:"grocery",desc:"",date:td()};S.showAdd=false;render();
   try{await api({action:"add",...entry})}catch(e){}
 }
 
-async function updateExpense(){
+async function addIncome(){
+  if(!S.incForm.amount)return;
+  const id=Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+  const entry={id,amount:parseFloat(S.incForm.amount),category:S.incForm.category,desc:S.incForm.desc,date:S.incForm.date,ts:Date.now(),type:"income"};
+  S.data.push(entry);S.incForm={amount:"",category:"salary",desc:"",date:td()};S.showAddIncome=false;render();
+  try{await api({action:"add",...entry})}catch(e){}
+}
+
+async function updateEntry(){
   const f=S.editForm;if(!f.amount)return;
-  const idx=S.expenses.findIndex(e=>e.id===f.id);
-  if(idx>=0){S.expenses[idx]={...S.expenses[idx],amount:parseFloat(f.amount),category:f.category,desc:f.desc,date:f.date}}
+  const idx=S.data.findIndex(e=>e.id===f.id);
+  if(idx>=0){S.data[idx]={...S.data[idx],amount:parseFloat(f.amount),category:f.category,desc:f.desc,date:f.date}}
   S.showEdit=null;render();
   try{
     await api({action:"delete",id:f.id});
-    await api({action:"add",id:f.id,amount:f.amount,category:f.category,desc:f.desc||"",date:f.date,ts:S.expenses[idx]?.ts||Date.now()});
+    await api({action:"add",id:f.id,amount:f.amount,category:f.category,desc:f.desc||"",date:f.date,ts:S.data[idx]?.ts||Date.now(),type:f.type||"expense"});
   }catch(e){}
 }
 
-async function deleteExpense(id){
-  S.expenses=S.expenses.filter(e=>e.id!==id);S.showEdit=null;render();
+async function deleteEntry(id){
+  S.data=S.data.filter(e=>e.id!==id);S.showEdit=null;render();
   try{await api({action:"delete",id})}catch(e){}
 }
 
@@ -171,8 +248,9 @@ function weekData(){
   for(let i=6;i>=0;i--){
     const d=new Date();d.setDate(d.getDate()-i);
     const ds=d.toISOString().slice(0,10);
-    const sum=S.expenses.filter(e=>e.date===ds).reduce((s,e)=>s+(e.amount||0),0);
-    days.push({label:DAYS[d.getDay()],sum,isToday:i===0});
+    const exp=expenses().filter(e=>e.date===ds).reduce((s,e)=>s+(e.amount||0),0);
+    const inc=incomes().filter(e=>e.date===ds).reduce((s,e)=>s+(e.amount||0),0);
+    days.push({label:DAYS[d.getDay()],exp,inc,isToday:i===0});
   }
   return days;
 }
@@ -185,62 +263,85 @@ function render(){
     app.innerHTML=`<div class="sw"><div class="scard">
       <div style="font-size:48px;margin-bottom:6px">💰</div>
       <h1>Shared Expenses</h1>
-      <p class="sub">Track household expenses together via Google Sheets.</p>
+      <p class="sub">Track income & expenses together via Google Sheets.</p>
       <input id="ui" placeholder="Paste your Apps Script URL" value="${S.url}">
       <button class="btn" onclick="S.url=document.getElementById('ui').value;tryConnect()">
         ${S.status==="testing"?"Connecting...":"Connect"}</button>
       ${S.status==="fail"?'<p class="err">Connection failed. Check URL.</p>':""}
+      <div style="margin-top:16px;text-align:left">
+        <p style="font-size:11px;color:#94a3b8;margin-bottom:6px">⚠️ If adding income for the first time, update your Apps Script:</p>
+        <button style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer;width:100%;font-weight:600" onclick="S.showScript=!S.showScript;render()">
+          ${S.showScript?"Hide":"Show"} Updated Script Code
+        </button>
+        ${S.showScript?`<div class="script-box"><pre>${NEW_SCRIPT.replace(/</g,'&lt;')}</pre><button onclick="navigator.clipboard.writeText(\`${NEW_SCRIPT.replace(/`/g,'\\`').replace(/\\/g,'\\\\')}\`);this.textContent='✓ Copied!'">📋 Copy</button></div>
+        <p style="font-size:10px;color:#64748b;margin-top:4px;line-height:1.5">Paste in Apps Script, save, then Deploy → Manage deployments → Edit → New version → Deploy</p>`:""}
+      </div>
     </div></div>`;return;
   }
 
-  const today=S.expenses.filter(e=>e.date===td());
-  const todaySum=today.reduce((s,e)=>s+(e.amount||0),0);
-  const me=S.expenses.filter(e=>e.date&&e.date.startsWith(S.viewMonth));
-  const total=me.reduce((s,e)=>s+(e.amount||0),0);
-  const months=[...new Set(S.expenses.map(e=>e.date?.slice(0,7)).filter(Boolean))].sort().reverse();
+  const allExp=expenses();
+  const allInc=incomes();
+  const totalI=totalIncome(allInc);
+  const totalE=totalExpense(allExp);
+  const balance=totalI-totalE;
+
+  const todayAll=S.data.filter(e=>e.date===td());
+  const todayExp=todayAll.filter(e=>e.type!=="income");
+  const todayInc=todayAll.filter(e=>e.type==="income");
+  const todayExpSum=totalExpense(todayExp);
+  const todayIncSum=totalIncome(todayInc);
+
+  const me=S.data.filter(e=>e.date&&e.date.startsWith(S.viewMonth));
+  const meExp=me.filter(e=>e.type!=="income");
+  const meInc=me.filter(e=>e.type==="income");
+  const monthExp=totalExpense(meExp);
+  const monthInc=totalIncome(meInc);
+
+  const months=[...new Set(S.data.map(e=>e.date?.slice(0,7)).filter(Boolean))].sort().reverse();
   if(!months.includes(mk()))months.unshift(mk());
-  const thisMonthAll=S.expenses.filter(e=>e.date&&e.date.startsWith(mk()));
-  const thisMonthTotal=thisMonthAll.reduce((s,e)=>s+(e.amount||0),0);
 
   let content="";
 
   if(S.page==="home"){
-    const wd=weekData();const maxW=Math.max(...wd.map(d=>d.sum),1);
+    const wd=weekData();const maxW=Math.max(...wd.map(d=>Math.max(d.exp,d.inc)),1);
     const weekChart=`<div class="week-chart">${wd.map(d=>
-      `<div class="bar-wrap"><div class="bar ${d.isToday?"today":""}" style="height:${Math.max(d.sum/maxW*50,2)}px;${d.sum>0?"background:"+(d.isToday?"#0f172a":"#94a3b8"):""}"></div><div class="bar-label">${d.label}</div></div>`
+      `<div class="bar-wrap">
+        <div class="bar" style="height:${Math.max(d.exp/maxW*50,d.exp>0?3:0)}px;background:${d.isToday?"#0f172a":"#f87171"}"></div>
+        <div class="bar-label">${d.label}</div>
+      </div>`
     ).join("")}</div>`;
-    const todayRows=[...today].sort((a,b)=>b.ts-a.ts).map(e=>expRow(e)).join("");
+
+    const todayRows=[...todayAll].sort((a,b)=>b.ts-a.ts).map(e=>entryRow(e)).join("");
     content=`
-      <div class="sh">Today's Expenses</div>
-      ${today.length===0?'<div class="empty">No expenses yet. Tap + to add!</div>':todayRows}
+      <div class="sh">Today</div>
+      ${todayAll.length===0?'<div class="empty">No entries yet. Tap + or 💵 to add!</div>':todayRows}
       <div class="sh" style="margin-top:16px">Last 7 Days</div>
       <div style="background:#fff;border-radius:14px;padding:10px 12px;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:8px">
         ${weekChart}
       </div>
       <div class="sh" style="margin-top:16px">This Month</div>
       <div class="stat-row">
-        <div class="sc"><div class="sl">Total</div><div class="sv">${fmt(thisMonthTotal)}</div></div>
-        <div class="sc"><div class="sl">Items</div><div class="sv">${thisMonthAll.length}</div></div>
-        <div class="sc"><div class="sl">Biggest</div><div class="sv">${thisMonthAll.length?fmt(Math.max(...thisMonthAll.map(e=>e.amount||0))):"₱0"}</div></div>
+        <div class="sc"><div class="sl">Income</div><div class="sv" style="color:#16a34a">${fmt(monthInc)}</div></div>
+        <div class="sc"><div class="sl">Expenses</div><div class="sv" style="color:#dc2626">${fmt(monthExp)}</div></div>
+        <div class="sc"><div class="sl">Biggest</div><div class="sv">${meExp.length?fmt(Math.max(...meExp.map(e=>e.amount||0))):"₱0"}</div></div>
       </div>`;
   }
 
   if(S.page==="report"){
-    const byCat=CATS.map(c=>({...c,sum:me.filter(e=>e.category===c.id).reduce((s,e)=>s+(e.amount||0),0),cnt:me.filter(e=>e.category===c.id).length})).filter(c=>c.sum>0).sort((a,b)=>b.sum-a.sum);
+    const byCat=CATS.map(c=>({...c,sum:meExp.filter(e=>e.category===c.id).reduce((s,e)=>s+(e.amount||0),0),cnt:meExp.filter(e=>e.category===c.id).length})).filter(c=>c.sum>0).sort((a,b)=>b.sum-a.sum);
     const catBars=byCat.map(c=>`<div class="cr">
       <div class="ch"><span>${c.icon} ${c.label} <span class="badge" style="background:${c.color}15;color:${c.color}">${c.cnt}x</span></span><span class="ct">${fmt(c.sum)}</span></div>
-      <div class="barbg"><div class="bf" style="width:${total?(c.sum/total*100):0}%;background:${c.color}"></div></div>
-      <div class="pct">${total?(c.sum/total*100).toFixed(1):0}%</div>
+      <div class="barbg"><div class="bf" style="width:${monthExp?(c.sum/monthExp*100):0}%;background:${c.color}"></div></div>
+      <div class="pct">${monthExp?(c.sum/monthExp*100).toFixed(1):0}%</div>
     </div>`).join("");
-    const top5=[...me].sort((a,b)=>b.amount-a.amount).slice(0,5).map((e,i)=>{
-      const c=gc(e.category);
-      return`<div class="row" style="background:${i===0?'#fef2f2':'#fff'}">
-        <div class="ci" style="background:${c.color}1a">${c.icon}</div>
-        <div class="info"><div class="t">${e.desc||c.label}</div><div class="d">${e.date} · ${timeStr(e.ts)}</div></div>
-        <div class="amt" style="color:#dc2626">${fmt(e.amount)}</div>
-      </div>`;
-    }).join("");
-    const uniqueDays=[...new Set(me.map(e=>e.date))].length;
+
+    const incByCat=INCOME_CATS.map(c=>({...c,sum:meInc.filter(e=>e.category===c.id).reduce((s,e)=>s+(e.amount||0),0),cnt:meInc.filter(e=>e.category===c.id).length})).filter(c=>c.sum>0).sort((a,b)=>b.sum-a.sum);
+    const incBars=incByCat.map(c=>`<div class="cr">
+      <div class="ch"><span>${c.icon} ${c.label} <span class="badge" style="background:${c.color}15;color:${c.color}">${c.cnt}x</span></span><span class="ct">${fmt(c.sum)}</span></div>
+      <div class="barbg"><div class="bf" style="width:${monthInc?(c.sum/monthInc*100):0}%;background:${c.color}"></div></div>
+    </div>`).join("");
+
+    const uniqueDays=[...new Set(meExp.map(e=>e.date))].length;
     const daysInMonth=new Date(parseInt(S.viewMonth.split("-")[0]),parseInt(S.viewMonth.split("-")[1]),0).getDate();
     content=`
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -248,37 +349,71 @@ function render(){
         <select onchange="S.viewMonth=this.value;render()">${months.map(m=>`<option value="${m}" ${m===S.viewMonth?"selected":""}>${ml(m)}</option>`).join("")}</select>
       </div>
       <div class="tc">
-        <div style="font-size:12px;opacity:.5">Total Spent</div>
-        <div class="big">${fmt(total)}</div>
-        <div style="font-size:11px;opacity:.4">${me.length} transactions · ${uniqueDays}/${daysInMonth} days</div>
+        <div style="font-size:11px;opacity:.5">Net this month</div>
+        <div class="big" style="color:${monthInc-monthExp>=0?"#16a34a":"#dc2626"}">${monthInc-monthExp>=0?"+":"−"}${fmt(Math.abs(monthInc-monthExp))}</div>
+        <div style="display:flex;justify-content:center;gap:16px;margin-top:6px;font-size:12px">
+          <span style="color:#16a34a">↑ ${fmt(monthInc)}</span>
+          <span style="color:#dc2626">↓ ${fmt(monthExp)}</span>
+        </div>
       </div>
-      <div class="stat-row">
-        <div class="sc"><div class="sl">Avg/Day Spent</div><div class="sv">${fmt(uniqueDays?total/uniqueDays:0)}</div></div>
-        <div class="sc"><div class="sl">Avg/Transaction</div><div class="sv">${fmt(me.length?total/me.length:0)}</div></div>
-      </div>
-      <div class="sh" style="margin-top:16px">Breakdown</div>
-      ${byCat.length===0?'<div class="empty">No data</div>':catBars}
-      ${byCat.length>0?`<div class="sh" style="margin-top:16px">Top 5 Expenses</div>${top5}`:""}`;
+      ${meInc.length?`<div class="sh" style="margin-top:12px">Income Sources</div>${incBars}`:""}
+      <div class="sh" style="margin-top:12px">Expense Breakdown</div>
+      ${byCat.length===0?'<div class="empty">No expenses</div>':catBars}
+      <div class="sh" style="margin-top:16px">Date Range Balance</div>
+      <div class="date-range">
+        <div class="dr-row">
+          <input class="if" type="date" value="${S.drFrom}" onchange="S.drFrom=this.value;render()" placeholder="From">
+          <span style="color:#94a3b8;font-size:12px">to</span>
+          <input class="if" type="date" value="${S.drTo}" onchange="S.drTo=this.value;render()" placeholder="To">
+        </div>
+        ${S.drFrom&&S.drTo?(() => {
+          const rangeData=S.data.filter(e=>e.date>=S.drFrom&&e.date<=S.drTo);
+          const rInc=rangeData.filter(e=>e.type==="income").reduce((s,e)=>s+(e.amount||0),0);
+          const rExp=rangeData.filter(e=>e.type!=="income").reduce((s,e)=>s+(e.amount||0),0);
+          const rBal=rInc-rExp;
+          return `<div class="dr-result">
+            <div class="dr-label">Balance for period</div>
+            <div class="dr-val" style="color:${rBal>=0?"#16a34a":"#dc2626"}">${rBal>=0?"+":"−"}${fmt(Math.abs(rBal))}</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px">Income: ${fmt(rInc)} · Expenses: ${fmt(rExp)}</div>
+          </div>`;
+        })():`<div style="font-size:11px;color:#94a3b8;text-align:center">Select date range to see balance</div>`}
+      </div>`;
   }
 
   if(S.page==="history"){
     let filtered=[...me].sort((a,b)=>b.ts-a.ts);
-    if(S.filterCat!=="all")filtered=filtered.filter(e=>e.category===S.filterCat);
+    if(S.filterCat==="income")filtered=filtered.filter(e=>e.type==="income");
+    else if(S.filterCat==="expense")filtered=filtered.filter(e=>e.type!=="income");
+    else if(S.filterCat!=="all")filtered=filtered.filter(e=>e.category===S.filterCat);
     if(S.search)filtered=filtered.filter(e=>(e.desc||"").toLowerCase().includes(S.search.toLowerCase())||gc(e.category).label.toLowerCase().includes(S.search.toLowerCase()));
     const filterTotal=filtered.reduce((s,e)=>s+(e.amount||0),0);
-    const rows=filtered.map(e=>expRow(e)).join("");
+    const rows=filtered.map(e=>entryRow(e)).join("");
     content=`
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div class="sh">Expenses</div>
+        <div class="sh">History</div>
         <select onchange="S.viewMonth=this.value;render()">${months.map(m=>`<option value="${m}" ${m===S.viewMonth?"selected":""}>${ml(m)}</option>`).join("")}</select>
       </div>
-      <div class="search-bar"><input placeholder="🔍 Search expenses..." value="${S.search}" oninput="S.search=this.value;render()"></div>
+      <div class="search-bar"><input placeholder="🔍 Search..." value="${S.search}" oninput="S.search=this.value;render()"></div>
       <div class="chip-row">
         <span class="chip ${S.filterCat==="all"?"active":""}" onclick="S.filterCat='all';render()">All</span>
-        ${CATS.map(c=>`<span class="chip ${S.filterCat===c.id?"active":""}" onclick="S.filterCat='${c.id}';render()">${c.icon} ${c.label}</span>`).join("")}
+        <span class="chip ${S.filterCat==="income"?"active":""}" onclick="S.filterCat='income';render()" style="${S.filterCat==="income"?"background:#16a34a;color:#fff;border-color:#16a34a":""}">💵 Income</span>
+        <span class="chip ${S.filterCat==="expense"?"active":""}" onclick="S.filterCat='expense';render()">📉 Expenses</span>
+        ${CATS.map(c=>`<span class="chip ${S.filterCat===c.id?"active":""}" onclick="S.filterCat='${c.id}';render()">${c.icon}</span>`).join("")}
       </div>
       <div style="font-size:11px;color:#94a3b8;margin-bottom:8px">${filtered.length} items · ${fmt(filterTotal)}</div>
       ${filtered.length===0?'<div class="empty">No results</div>':rows}`;
+  }
+
+  if(S.page==="income"){
+    const incList=[...allInc].sort((a,b)=>b.ts-a.ts);
+    const incRows=incList.map(e=>entryRow(e)).join("");
+    content=`
+      <div class="sh">All Income</div>
+      <div class="tc" style="margin-bottom:12px">
+        <div style="font-size:11px;opacity:.5">Total Income (All Time)</div>
+        <div class="big" style="color:#16a34a">${fmt(totalI)}</div>
+      </div>
+      ${incList.length===0?'<div class="empty">No income recorded yet</div>':incRows}`;
   }
 
   app.innerHTML=`
@@ -291,15 +426,12 @@ function render(){
           <button onclick="S.connected=false;S.status='';render()">⚙️</button>
         </div>
       </div>
-      <div class="hero">
-        <div class="hero-left">
-          <div class="hl">Today</div>
-          <div class="hv">${fmt(todaySum)}</div>
-          <div class="hs">${today.length} item${today.length!==1?"s":""}</div>
-        </div>
-        <div class="hero-right">
-          <div class="hl">This Month</div>
-          <div class="hv">${fmt(thisMonthTotal)}</div>
+      <div class="balance-card">
+        <div class="balance-label">Current Balance</div>
+        <div class="balance-amount ${balance>=0?"positive":"negative"}">${balance>=0?"":"−"}${fmt(Math.abs(balance))}</div>
+        <div class="balance-row">
+          <div class="br-item"><div class="br-label">Income</div><div class="br-val income-color">+${fmt(totalI)}</div></div>
+          <div class="br-item"><div class="br-label">Expenses</div><div class="br-val expense-color">−${fmt(totalE)}</div></div>
         </div>
       </div>
     </div>
@@ -307,38 +439,42 @@ function render(){
       <button class="${S.page==="home"?"active":""}" onclick="S.page='home';render()"><span class="ni">🏠</span>Home</button>
       <button class="${S.page==="report"?"active":""}" onclick="S.page='report';render()"><span class="ni">📊</span>Report</button>
       <button class="${S.page==="history"?"active":""}" onclick="S.page='history';render()"><span class="ni">📋</span>History</button>
+      <button class="${S.page==="income"?"active":""}" onclick="S.page='income';render()"><span class="ni">💵</span>Income</button>
     </div>
     <div class="content">${content}</div>
-    <button class="fab" onclick="S.showAdd=true;render()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    </button>
-    ${S.showAdd?addModal():""}
+    <div class="fab-wrap">
+      <button class="fab fab-expense" onclick="S.showAdd=true;render()">−</button>
+      <button class="fab fab-income" onclick="S.showAddIncome=true;render()">+</button>
+    </div>
+    ${S.showAdd?expenseModal():""}
+    ${S.showAddIncome?incomeModal():""}
     ${S.showEdit?editModal():""}`;
 }
 
-function expRow(e){
+function entryRow(e){
+  const isInc=e.type==="income";
   const c=gc(e.category);
-  return`<div class="row">
+  return`<div class="row ${isInc?"income-row":""}">
     <div class="ci" style="background:${c.color}15">${c.icon}</div>
     <div class="info"><div class="t">${e.desc||c.label}</div><div class="d">${e.date} · ${timeStr(e.ts)}</div></div>
-    <div class="amt">${fmt(e.amount)}</div>
-    <div class="actions"><button onclick="openEdit('${e.id}')" title="Edit">✏️</button></div>
+    <div class="amt ${isInc?"green":"red"}">${isInc?"+":"−"}${fmt(e.amount)}</div>
+    <div class="actions"><button onclick="openEdit('${e.id}')">✏️</button></div>
   </div>`;
 }
 
 function openEdit(id){
-  const e=S.expenses.find(x=>x.id===id);if(!e)return;
-  S.editForm={id:e.id,amount:String(e.amount),category:e.category,desc:e.desc||"",date:e.date};
+  const e=S.data.find(x=>x.id===id);if(!e)return;
+  S.editForm={id:e.id,amount:String(e.amount),category:e.category,desc:e.desc||"",date:e.date,type:e.type||"expense"};
   S.showEdit=id;render();
 }
 
-function addModal(){
+function expenseModal(){
   const catBtns=CATS.map(c=>`<button class="cb" style="background:${S.form.category===c.id?c.color+'15':'#f8fafc'};border-color:${S.form.category===c.id?c.color:'#e2e8f0'}"
     onclick="S.form.category='${c.id}';render()">
     <span class="ce">${c.icon}</span><span class="cl" style="color:${S.form.category===c.id?c.color:'#64748b'};font-weight:${S.form.category===c.id?700:400}">${c.label}</span>
   </button>`).join("");
   return`<div class="overlay" onclick="S.showAdd=false;render()"><div class="modal" onclick="event.stopPropagation()">
-    <div class="mh"><h3>Add Expense</h3><button onclick="S.showAdd=false;render()">✕</button></div>
+    <div class="mh"><h3>➖ Add Expense</h3><button onclick="S.showAdd=false;render()">✕</button></div>
     <label class="fl">Amount (₱)</label>
     <input class="ib" type="number" inputmode="decimal" placeholder="0" value="${S.form.amount}" oninput="S.form.amount=this.value" autofocus>
     <label class="fl">Date</label>
@@ -347,28 +483,49 @@ function addModal(){
     <div class="cg">${catBtns}</div>
     <label class="fl">Note (optional)</label>
     <input class="if" type="text" placeholder="What was it for?" value="${S.form.desc}" oninput="S.form.desc=this.value">
-    <button class="sbtn" onclick="addExpense()" ${S.form.amount?"":"disabled"}>✓ Add Expense</button>
+    <button class="sbtn" onclick="addExpense()" ${S.form.amount?"":"disabled"}>➖ Add Expense</button>
+  </div></div>`;
+}
+
+function incomeModal(){
+  const catBtns=INCOME_CATS.map(c=>`<button class="cb" style="background:${S.incForm.category===c.id?c.color+'15':'#f8fafc'};border-color:${S.incForm.category===c.id?c.color:'#e2e8f0'}"
+    onclick="S.incForm.category='${c.id}';render()">
+    <span class="ce">${c.icon}</span><span class="cl" style="color:${S.incForm.category===c.id?c.color:'#64748b'};font-weight:${S.incForm.category===c.id?700:400}">${c.label}</span>
+  </button>`).join("");
+  return`<div class="overlay" onclick="S.showAddIncome=false;render()"><div class="modal" onclick="event.stopPropagation()">
+    <div class="mh"><h3>➕ Add Income</h3><button onclick="S.showAddIncome=false;render()">✕</button></div>
+    <label class="fl">Amount (₱)</label>
+    <input class="ib ib-income" type="number" inputmode="decimal" placeholder="0" value="${S.incForm.amount}" oninput="S.incForm.amount=this.value" autofocus>
+    <label class="fl">Date</label>
+    <input class="if" type="date" value="${S.incForm.date}" oninput="S.incForm.date=this.value">
+    <label class="fl">Source</label>
+    <div class="cg">${catBtns}</div>
+    <label class="fl">Description</label>
+    <input class="if" type="text" placeholder="Where did this come from?" value="${S.incForm.desc}" oninput="S.incForm.desc=this.value">
+    <button class="sbtn sbtn-income" onclick="addIncome()" ${S.incForm.amount?"":"disabled"}>➕ Add Income</button>
   </div></div>`;
 }
 
 function editModal(){
   const f=S.editForm;
-  const catBtns=CATS.map(c=>`<button class="cb" style="background:${f.category===c.id?c.color+'15':'#f8fafc'};border-color:${f.category===c.id?c.color:'#e2e8f0'}"
+  const isInc=f.type==="income";
+  const catList=isInc?INCOME_CATS:CATS;
+  const catBtns=catList.map(c=>`<button class="cb" style="background:${f.category===c.id?c.color+'15':'#f8fafc'};border-color:${f.category===c.id?c.color:'#e2e8f0'}"
     onclick="S.editForm.category='${c.id}';render()">
     <span class="ce">${c.icon}</span><span class="cl" style="color:${f.category===c.id?c.color:'#64748b'};font-weight:${f.category===c.id?700:400}">${c.label}</span>
   </button>`).join("");
   return`<div class="overlay" onclick="S.showEdit=null;render()"><div class="modal" onclick="event.stopPropagation()">
-    <div class="mh"><h3>Edit Expense</h3><button onclick="S.showEdit=null;render()">✕</button></div>
+    <div class="mh"><h3>Edit ${isInc?"Income":"Expense"}</h3><button onclick="S.showEdit=null;render()">✕</button></div>
     <label class="fl">Amount (₱)</label>
-    <input class="ib" type="number" inputmode="decimal" value="${f.amount}" oninput="S.editForm.amount=this.value">
+    <input class="ib ${isInc?"ib-income":""}" type="number" inputmode="decimal" value="${f.amount}" oninput="S.editForm.amount=this.value">
     <label class="fl">Date</label>
     <input class="if" type="date" value="${f.date}" oninput="S.editForm.date=this.value">
-    <label class="fl">Category</label>
+    <label class="fl">${isInc?"Source":"Category"}</label>
     <div class="cg">${catBtns}</div>
     <label class="fl">Note</label>
-    <input class="if" type="text" placeholder="Description" value="${f.desc}" oninput="S.editForm.desc=this.value">
-    <button class="sbtn" onclick="updateExpense()" ${f.amount?"":"disabled"}>✓ Save Changes</button>
-    <button class="dbtn" onclick="if(confirm('Delete this expense?'))deleteExpense('${f.id}')">🗑 Delete Expense</button>
+    <input class="if" type="text" value="${f.desc}" oninput="S.editForm.desc=this.value">
+    <button class="sbtn ${isInc?"sbtn-income":""}" onclick="updateEntry()" ${f.amount?"":"disabled"}>✓ Save</button>
+    <button class="dbtn" onclick="if(confirm('Delete?'))deleteEntry('${f.id}')">🗑 Delete</button>
   </div></div>`;
 }
 
