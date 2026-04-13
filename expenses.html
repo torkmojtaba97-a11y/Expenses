@@ -254,50 +254,66 @@ function scanReceipt(input) {
 
   const reader = new FileReader();
   reader.onload = (e) => {
-    const cropContainer = document.createElement('div');
-    cropContainer.id = "crop-modal";
-    cropContainer.style = "position:fixed; top:0; left:0; width:100vw; height:100vh; background:#000; z-index:10000; display:flex; flex-direction:column;";
+    // Modal for iOS/Android
+    const modal = document.createElement('div');
+    modal.id = "ocr-modal";
+    modal.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:#000;z-index:99999;display:flex;flex-direction:column;";
     
-    cropContainer.innerHTML = `
-      <div style="flex:1; overflow:hidden; display:flex; align-items:center; justify-content:center;">
-        <img id="crop-image" src="${e.target.result}" style="max-width:100%; display:block;">
+    modal.innerHTML = `
+      <div style="flex:1;position:relative;background:#000;">
+        <img id="crop-target" src="${e.target.result}" style="max-width:100%;">
       </div>
-      <div style="padding:20px; background:#111; display:flex; justify-content:center; gap:10px;">
-        <button id="btn-cancel" style="padding:12px 24px; background:#444; color:#fff; border:none; border-radius:8px;">Cancel</button>
-        <button id="btn-confirm" style="padding:12px 24px; background:#007bff; color:#fff; border:none; border-radius:8px; font-weight:bold;">Scan Amount</button>
+      <div style="height:80px;background:#1a1a1a;display:flex;justify-content:space-evenly;align-items:center;padding-bottom:env(safe-area-inset-bottom);">
+        <button id="ocr-cancel" style="color:#fff;background:#333;border:none;padding:12px 25px;border-radius:8px;font-size:16px;">Cancel</button>
+        <button id="ocr-confirm" style="color:#fff;background:#007bff;border:none;padding:12px 25px;border-radius:8px;font-size:16px;font-weight:bold;">Scan Amount</button>
       </div>
     `;
-    document.body.appendChild(cropContainer);
+    document.body.appendChild(modal);
 
-    const image = document.getElementById('crop-image');
-    cropper = new Cropper(image, {
+    const targetImg = document.getElementById('crop-target');
+    cropper = new Cropper(targetImg, {
       viewMode: 1,
       dragMode: 'move',
-      autoCropArea: 0.8,
+      autoCropArea: 0.5, // Start with a smaller box to encourage tighter cropping
+      responsive: true,
       restore: false,
-      guides: true,
-      center: true,
-      highlight: false,
-      cropBoxMovable: true,
-      cropBoxResizable: true,
-      toggleDragModeOnDblclick: false,
     });
 
-    document.getElementById('btn-confirm').onclick = () => {
-      // High resolution output for better OCR
-      const canvas = cropper.getCroppedCanvas({ width: 1000 });
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    document.getElementById('ocr-confirm').onclick = () => {
+      // Step 1: High Contrast Cropped Canvas
+      const canvas = cropper.getCroppedCanvas({ width: 1200 }); // High res for precision
+      const ctx = canvas.getContext('2d');
       
-      cleanupCrop();
+      // Step 2: Image Processing to remove background noise
+      ctx.globalCompositeOperation = 'destination-over';
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+      closeModal();
       processOcr(dataUrl);
     };
 
-    document.getElementById('btn-cancel').onclick = () => {
-      cleanupCrop();
-    };
+    document.getElementById('ocr-cancel').onclick = closeModal;
   };
   reader.readAsDataURL(file);
 }
+
+function closeModal() {
+  if (cropper) {
+    cropper.destroy();
+    const m = document.getElementById('ocr-modal');
+    if (m) m.remove();
+  }
+}
+
+function processOcr(base64) {
+  S.ocrStatus = "Reading..."; S.ocrAmounts = []; R();
+
+  Tesseract.recognize(base64, 'eng', {
+    tessedit_char_whitelist: '0123456789', // Ignore dots, commas, and currency
+    logger: m => { if(m.status === 'recognizing text') { S.ocrStatus = "Progress: " + Math.round(m.progress * 100) + "%"; R(); } }
+  }).then(res => {
 
 function cleanupCrop() {
   if (cropper) {
