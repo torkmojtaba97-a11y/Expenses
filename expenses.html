@@ -246,22 +246,36 @@ function setOB(v){S.openBal=num(v);localStorage.setItem("ex_openbal",S.openBal);
 // تابع اصلاح شده اسکن رسید
 function scanReceipt(input, target) {
   var file = input.files[0]; if (!file) return;
-  S.ocrStatus = "Reading receipt..."; S.ocrAmounts = []; R();
+  S.ocrStatus = "Scanning for Total Amount..."; S.ocrAmounts = []; R();
   var reader = new FileReader();
   reader.onload = function(ev) {
     S.ocrImg = ev.target.result; R();
     Tesseract.recognize(ev.target.result, 'eng').then(function(result) {
       var txt = result.data.text;
-      // Extract amounts with decimal points
-      var matches = txt.match(/\d+[\.,]\d{2}/g) || []; 
-      var nums = []; var seen = {};
-      for (var i = 0; i < matches.length; i++) {
-        var n = num(matches[i].replace(/,/g, ""));
-        if (n > 10 && !seen[n]) { seen[n] = true; nums.push(n); }
+      var lines = txt.split('\n');
+      var foundNums = [];
+      
+      // ۱. جستجو برای خطوطی که شامل کلمات کلیدی مبلغ کل هستند
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].toLowerCase();
+        if (line.includes("total") || line.includes("due") || line.includes("amount")) {
+          var match = line.match(/\d+[\.,]\d{2}/);
+          if (match) foundNums.push(num(match[0].replace(/,/g, "")));
+        }
       }
-      nums.sort(function(a, b) { return b - a; });
-      S.ocrAmounts = nums.slice(0, 8);
-      S.ocrStatus = nums.length ? "Amount(s) found - Tap to use:" : "No amounts found. Enter manually.";
+
+      // ۲. اگر کلمه کلیدی پیدا نشد، بزرگترین عدد موجود در رسید را پیدا کن
+      if (foundNums.length === 0) {
+        var allMatches = txt.match(/\d+[\.,]\d{2}/g) || [];
+        var allNums = allMatches.map(m => num(m.replace(/,/g, "")));
+        if (allNums.length > 0) {
+          foundNums.push(Math.max(...allNums)); // معمولاً بزرگترین عدد همان مبلغ نهایی است
+        }
+      }
+
+      // حذف تکراری‌ها و محدود کردن به ۳ عدد محتمل‌تر
+      S.ocrAmounts = [...new Set(foundNums)].filter(n => n > 1).slice(0, 3);
+      S.ocrStatus = S.ocrAmounts.length ? "Total found - Tap to use:" : "Could not find Total. Enter manually.";
       R();
     }).catch(function() { 
       S.ocrStatus = "Error processing image."; 
