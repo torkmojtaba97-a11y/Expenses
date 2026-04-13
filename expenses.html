@@ -246,60 +246,50 @@ function setOB(v){S.openBal=num(v);localStorage.setItem("ex_openbal",S.openBal);
 // تابع اصلاح شده اسکن رسید
 function scanReceipt(input, target) {
   var file = input.files[0]; if (!file) return;
-  S.ocrStatus = "Initializing engine..."; S.ocrAmounts = []; R();
+  S.ocrStatus = "Processing..."; S.ocrAmounts = []; R();
   
   var reader = new FileReader();
   reader.onload = function(e) {
     var img = new Image();
     img.onload = function() {
       var canvas = document.createElement("canvas");
-      var ctx = canvas.getContext("2d");
-      
-      // کاهش مقیاس به 1.2 برای سرعت بیشتر (تعادل بین دقت و سرعت)
-      var scale = 1.2; 
-      canvas.width = img.width * scale;
+      // ۱. کوچک کردن تصویر برای سرعت فوق‌العاده (۳ ثانیه)
+      var scale = 600 / img.width;
+      canvas.width = 600;
       canvas.height = img.height * scale;
-      
-      // فیلتر ساده‌تر و سریع‌تر
-      ctx.filter = 'contrast(150%) grayscale(100%)';
+      var ctx = canvas.getContext("2d");
+      ctx.filter = 'grayscale(100%) contrast(150%)'; // فیلتر سریع
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       
-      var processedImg = canvas.toDataURL("image/jpeg", 0.7);
-      S.ocrImg = processedImg; R();
+      // استفاده از فرمت Jpeg با کیفیت پایین برای ارسال سریع به موتور OCR
+      var fastImg = canvas.toDataURL("image/jpeg", 0.6);
 
-      // اضافه کردن لاگر برای دیدن پیشرفت کار
-      Tesseract.recognize(processedImg, 'eng', {
-        logger: m => {
-          if (m.status === 'recognizing text') {
-            S.ocrStatus = "Reading: " + Math.round(m.progress * 100) + "%";
-            R();
-          }
-        }
+      Tesseract.recognize(fastImg, 'eng', {
+        tessedit_char_whitelist: '0123456789.,', // فقط اعداد و ممیز
       }).then(function(res) {
-        var txt = res.data.text.toLowerCase();
-        // جستجوی عدد با فرمت 4,155.63 یا 4155.63
-        var matches = txt.match(/\d{1,3}(?:,\d{3})*(?:\.\d{2})/g) || [];
+        var txt = res.data.text;
+        // ۲. استخراج تمام اعداد و پاکسازی کاما/نقطه اشتباه
+        var matches = txt.match(/\d+[\.,]\d+/g) || [];
         var found = [];
         
         matches.forEach(m => {
-          var val = parseFloat(m.replace(/,/g, ""));
+          // تبدیل هر دو علامت , و . به فرمت استاندارد عدد
+          var clean = m.replace(/,/g, '.'); 
+          var val = parseFloat(clean);
+          
+          // اگر عدد ممیز اشتباه داشت (مثل ۴.۱۵۵ به جای ۴۱۵۵)، اصلاحش کن
+          if (val < 10 && m.includes('.') && clean.length > 4) {
+             val = parseFloat(m.replace(/[\.,]/g, '')) / 100;
+          }
+          
           if (val > 10) found.push(val);
         });
 
-        // اگر عددی پیدا نشد، بزرگترین عدد لیست را بردار
-        if (found.length === 0) {
-          var allNums = txt.match(/\d+\.\d{2}/g) || [];
-          allNums.forEach(n => found.push(parseFloat(n)));
-        }
-
-        S.ocrAmounts = [...new Set(found)].sort((a, b) => b - a).slice(0, 3);
-        S.ocrStatus = S.ocrAmounts.length ? "Scan complete" : "Manual entry required";
+        // ۳. بزرگترین عدد معمولاً همان مبلغ کل (Amount Due) است
+        S.ocrAmounts = [...new Set(found)].sort((a, b) => b - a).slice(0, 2);
+        S.ocrStatus = S.ocrAmounts.length ? "Amount found!" : "Not found";
         R();
-      }).catch(function(err) {
-        console.error(err);
-        S.ocrStatus = "Engine error. Try again.";
-        R();
-      });
+      }).catch(function() { S.ocrStatus = "Retry"; R(); });
     };
     img.src = e.target.result;
   };
