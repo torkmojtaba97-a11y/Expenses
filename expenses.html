@@ -246,64 +246,60 @@ function setOB(v){S.openBal=num(v);localStorage.setItem("ex_openbal",S.openBal);
 // تابع اصلاح شده اسکن رسید
 function scanReceipt(input, target) {
   var file = input.files[0]; if (!file) return;
-  S.ocrStatus = "Reading receipt..."; S.ocrAmounts = []; S.ocrImg = null; R();
+  S.ocrStatus = "Scanning for Amount Due..."; S.ocrAmounts = []; S.ocrImg = null; R();
   var reader = new FileReader();
   reader.onload = function(e) {
     var img = new Image();
     img.onload = function() {
       var canvas = document.createElement("canvas");
       var ctx = canvas.getContext("2d");
-      
-      // بهینه‌سازی اندازه برای سرعت و دقت
-      var maxDim = 1200;
-      var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      var scale = 1.5; // بزرگنمایی برای خوانش بهتر فونت‌های ریز
       canvas.width = img.width * scale;
       canvas.height = img.height * scale;
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       
-      // افزایش کنتراست برای بهتر خوانده شدن رسیدهای کمرنگ
+      // تبدیل به سیاه و سفید مطلق برای حذف سایه‌های خاکستری رسید
       var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       var data = imageData.data;
       for (var i = 0; i < data.length; i += 4) {
         var avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-        var v = (avg - 128) * 1.5 + 128; // افزایش شدت تضاد نوری
-        data[i] = data[i + 1] = data[i + 2] = v < 0 ? 0 : (v > 255 ? 255 : v);
+        var v = avg > 140 ? 255 : 0; 
+        data[i] = data[i + 1] = data[i + 2] = v;
       }
       ctx.putImageData(imageData, 0, 0);
-      
-      S.ocrImg = canvas.toDataURL("image/jpeg", 0.7); R();
+      S.ocrImg = canvas.toDataURL("image/jpeg", 0.8); R();
 
       Tesseract.recognize(S.ocrImg, 'eng').then(function(res) {
-        var text = res.data.text;
+        var text = res.data.text.toLowerCase();
         var lines = text.split('\n');
-        var candidates = [];
-        // شناسایی فرمت‌های پولی مثل 4,155.63 یا 4155.63
-        var priceRx = /\d{1,3}(?:,\d{3})*(?:\.\d{2})|\d+(?:\.\d{2})/;
+        var found = [];
+        // جستجوی دقیق برای مبلغ 4,155.63
+        var moneyRx = /(\d{1,3}(?:,\d{3})*(?:\.\d{2}))|(\d+(?:\.\d{2}))/;
 
         for (var i = 0; i < lines.length; i++) {
-          var line = lines[i].toLowerCase();
-          // جستجو بر اساس کلمات کلیدی موجود در رسید شما
-          if (line.includes("total") || line.includes("due") || line.includes("amount") || line.includes("php") || line.includes("pay")) {
-            var m = line.match(priceRx);
-            if (m) candidates.push(num(m[0].replace(/,/g, "")));
-            // چک کردن خط بعدی (گاهی عدد زیر کلمه توتال چاپ می‌شود)
+          var line = lines[i];
+          if (line.includes("amount") || line.includes("due") || line.includes("php") || line.includes("total")) {
+            var m = line.match(moneyRx);
+            if (m) found.push(num(m[0].replace(/,/g, "")));
+            // چک کردن خط زیرین (معمولاً در رسیدها مبلغ زیر عنوان چاپ می‌شود)
             if (i < lines.length - 1) {
-              var m2 = lines[i+1].match(priceRx);
-              if (m2) candidates.push(num(m2[0].replace(/,/g, "")));
+              var m2 = lines[i+1].match(moneyRx);
+              if (m2) found.push(num(m2[0].replace(/,/g, "")));
             }
           }
         }
 
-        // اگر هیچ کلمه کلیدی پیدا نشد، بزرگترین عدد اعشاری کل رسید را بردار
-        var allPrices = text.match(/\d{1,3}(?:,\d{3})*(?:\.\d{2})|\d+(?:\.\d{2})/g) || [];
-        var allNums = allPrices.map(p => num(p.replace(/,/g, "")));
-        if (allNums.length > 0) candidates.push(Math.max(...allNums));
+        // حذف اعداد کوچک (مثل تعداد آیتم‌ها) و برداشتن بزرگترین عدد به عنوان Total
+        var allPrices = text.match(/(\d{1,3}(?:,\d{3})*(?:\.\d{2}))|(\d+(?:\.\d{2}))/g) || [];
+        allPrices.forEach(p => { 
+          var n = num(p.replace(/,/g, ""));
+          if (n > 10) found.push(n);
+        });
 
-        // مرتب‌سازی و حذف تکراری‌ها
-        S.ocrAmounts = [...new Set(candidates)].filter(n => n > 1).sort((a, b) => b - a).slice(0, 3);
-        S.ocrStatus = S.ocrAmounts.length ? "Total identified - select below:" : "Total not found. Enter manually.";
+        S.ocrAmounts = [...new Set(found)].sort((a, b) => b - a).slice(0, 3);
+        S.ocrStatus = S.ocrAmounts.length ? "Total found!" : "Could not read Total. Use manual entry.";
         R();
-      }).catch(function() { S.ocrStatus = "Processing error."; R(); });
+      }).catch(function() { S.ocrStatus = "OCR Error."; R(); });
     };
     img.src = e.target.result;
   };
