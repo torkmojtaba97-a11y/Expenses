@@ -1662,7 +1662,7 @@ function doRender(){
       md+='<label style="display:flex;align-items:center;gap:10px;background:var(--bg3);border-radius:12px;padding:13px 14px;margin-top:12px;cursor:pointer">'+
         '<input type="checkbox" id="apply-toggle" style="width:18px;height:18px;accent-color:'+toggleColor+';cursor:pointer" '+(S.partialForm.applyNow?"checked":"")+' onchange="S.partialForm.applyNow=this.checked">'+
         '<div><div style="font-size:13px;font-weight:600;color:'+toggleColor+'">'+toggleLabel+'</div>'+
-        '<div style="font-size:10px;color:var(--txt3);margin-top:2px">اگه تیک بزنی الان به حساب اصلیت اعمال میشه</div></div>'+
+        '<div style="font-size:10px;color:var(--txt3);margin-top:2px">Check to apply this amount to your main balance now</div></div>'+
         '</label>'+
         '<button class="btn '+(isCredit?"btn-i":"btn-e")+'" onclick="addPartialPay()">Save Payment</button>';
     }
