@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
@@ -254,40 +254,86 @@ function scanReceipt(input) {
 
   const reader = new FileReader();
   reader.onload = (e) => {
-    // ایجاد یک المان تصویر موقت برای کراپ
-    const image = new Image();
-    image.src = e.target.result;
-    
-    // نمایش رابط کاربری کراپ (می‌توانید این بخش را در یک Modal قرار دهید)
     const cropContainer = document.createElement('div');
+    cropContainer.id = "crop-modal";
+    cropContainer.style = "position:fixed; top:0; left:0; width:100vw; height:100vh; background:#000; z-index:10000; display:flex; flex-direction:column;";
+    
     cropContainer.innerHTML = `
-      <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center;">
-        <div style="width:90%; max-height:70vh;"><img id="crop-target" src="${e.target.result}" style="max-width:100%;"></div>
-        <button id="btn-crop-confirm" style="margin-top:20px; padding:15px 30px; background:#28a745; color:#fff; border:none; border-radius:5px; font-weight:bold;">تایید و اسکن مبلغ</button>
+      <div style="flex:1; overflow:hidden; display:flex; align-items:center; justify-content:center;">
+        <img id="crop-image" src="${e.target.result}" style="max-width:100%; display:block;">
+      </div>
+      <div style="padding:20px; background:#111; display:flex; justify-content:center; gap:10px;">
+        <button id="btn-cancel" style="padding:12px 24px; background:#444; color:#fff; border:none; border-radius:8px;">Cancel</button>
+        <button id="btn-confirm" style="padding:12px 24px; background:#007bff; color:#fff; border:none; border-radius:8px; font-weight:bold;">Scan Amount</button>
       </div>
     `;
     document.body.appendChild(cropContainer);
 
-    const imgElement = document.getElementById('crop-target');
-    cropper = new Cropper(imgElement, {
-      aspectRatio: NaN, // اجازه انتخاب آزادانه کادر
-      viewMode: 1
+    const image = document.getElementById('crop-image');
+    cropper = new Cropper(image, {
+      viewMode: 1,
+      dragMode: 'move',
+      autoCropArea: 0.8,
+      restore: false,
+      guides: true,
+      center: true,
+      highlight: false,
+      cropBoxMovable: true,
+      cropBoxResizable: true,
+      toggleDragModeOnDblclick: false,
     });
 
-    document.getElementById('btn-crop-confirm').onclick = () => {
-      // دریافت تصویر برش خورده با کیفیت بالا
-      const croppedCanvas = cropper.getCroppedCanvas({ width: 800 });
-      const croppedImg = croppedCanvas.toDataURL("image/jpeg", 0.9);
+    document.getElementById('btn-confirm').onclick = () => {
+      // High resolution output for better OCR
+      const canvas = cropper.getCroppedCanvas({ width: 1000 });
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
       
-      // پاکسازی صفحه
-      cropper.destroy();
-      document.body.removeChild(cropContainer);
-      
-      // شروع اسکن روی تصویر برش خورده
-      processOcr(croppedImg);
+      cleanupCrop();
+      processOcr(dataUrl);
+    };
+
+    document.getElementById('btn-cancel').onclick = () => {
+      cleanupCrop();
     };
   };
   reader.readAsDataURL(file);
+}
+
+function cleanupCrop() {
+  if (cropper) {
+    cropper.destroy();
+    const modal = document.getElementById('crop-modal');
+    if (modal) modal.remove();
+  }
+}
+
+function processOcr(imgSource) {
+  S.ocrStatus = "Reading Data..."; S.ocrAmounts = []; R();
+
+  Tesseract.recognize(imgSource, 'eng', {
+    tessedit_char_whitelist: '0123456789', // Ignore noise, dots, and commas
+    logger: m => { 
+      if(m.status === 'recognizing text') { 
+        S.ocrStatus = "Progress: " + Math.round(m.progress * 100) + "%"; R(); 
+      } 
+    }
+  }).then(res => {
+    // Extract only digits from the cropped area
+    const rawDigits = res.data.text.replace(/[^0-9]/g, '');
+    
+    if (rawDigits.length >= 4) {
+      // Logic: Last two digits are always decimals
+      const finalVal = parseFloat(rawDigits.slice(0, -2) + "." + rawDigits.slice(-2));
+      S.ocrAmounts = [finalVal];
+      S.ocrStatus = "Success";
+    } else {
+      S.ocrStatus = "Error: Text too blurry";
+    }
+    R();
+  }).catch(err => {
+    S.ocrStatus = "OCR Failed";
+    R();
+  });
 }
 
 function processOcr(base64Img) {
