@@ -246,50 +246,64 @@ function setOB(v){S.openBal=num(v);localStorage.setItem("ex_openbal",S.openBal);
 // تابع اصلاح شده اسکن رسید
 function scanReceipt(input) {
   var file = input.files[0]; if (!file) return;
-  S.ocrStatus = "Targeting Amount Due..."; S.ocrAmounts = []; R();
+  S.ocrStatus = "Deep Scanning..."; S.ocrAmounts = []; R();
   
   var reader = new FileReader();
   reader.onload = function(e) {
     var img = new Image();
     img.onload = function() {
       var canvas = document.createElement("canvas");
-      canvas.width = 800; // رزولوشن بالا برای تفکیک اعداد از نویز
-      canvas.height = img.height * (800 / img.width);
+      // افزایش رزولوشن برای مقابله با تاری تصویر
+      canvas.width = 1000; 
+      canvas.height = img.height * (1000 / img.width);
       var ctx = canvas.getContext("2d");
       
-      // فیلتر فوق‌العاده سنگین برای حذف نویز (فقط متن مشکی باقی می‌ماند)
-      ctx.filter = 'grayscale(100%) contrast(400%) brightness(90%)';
+      // فیلتر ترکیبی برای بیرون کشیدن جوهر کمرنگ از کاغذ
+      ctx.filter = 'grayscale(100%) contrast(400%) brightness(80%)';
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       
       Tesseract.recognize(canvas.toDataURL("image/jpeg", 0.8), 'eng').then(function(res) {
         var lines = res.data.lines;
-        var finalPrice = null;
+        var found = [];
 
-        // جستجوی خط به خط برای پیدا کردن کلمه کلیدی
-        for (var i = 0; i < lines.length; i++) {
-          var lineText = lines[i].text.toLowerCase();
+        lines.forEach(line => {
+          var txt = line.text.toLowerCase().replace(/\s/g, ''); // حذف فاصله‌های خالی
           
-          if (lineText.includes("due") || lineText.includes("total") || lineText.includes("pay")) {
-            // استخراج اعداد فقط از همین خط یا حداکثر یک خط پایین‌تر
-            var combinedText = lineText + (lines[i+1] ? lines[i+1].text : "");
-            var digits = combinedText.replace(/[^0-9]/g, '');
-            
-            if (digits.length >= 4) {
-              finalPrice = parseFloat(digits.slice(0, -2) + "." + digits.slice(-2));
-              break; // به محض پیدا کردن مبلغ اصلی، جستجو را متوقف کن
+          // جستجوی کلمات کلیدی + عدد در همان خط
+          if (txt.includes("due") || txt.includes("total") || txt.includes("amount") || txt.includes("php")) {
+            var digits = txt.match(/\d+/g);
+            if (digits) {
+              var joined = digits.join('');
+              if (joined.length >= 4) {
+                var val = parseFloat(joined.slice(0, -2) + "." + joined.slice(-2));
+                if (val > 10) found.push(val);
+              }
             }
           }
+        });
+
+        // اگر با کلمات کلیدی پیدا نشد، تمام اعداد ۴ رقم به بالای کل رسید را بررسی کن
+        if (found.length === 0) {
+          var matches = res.data.text.replace(/[^0-9\n]/g, '').split('\n');
+          matches.forEach(m => {
+            if (m.length >= 4) {
+              found.push(parseFloat(m.slice(0, -2) + "." + m.slice(-2)));
+            }
+          });
         }
 
-        if (finalPrice) {
-          S.ocrAmounts = [finalPrice];
-          S.ocrStatus = "Total Found!";
+        // فیلتر کردن نویزها: مبالغ خیلی پرت (مثل شماره تلفن یا تاریخ) را حذف کن
+        found = [...new Set(found)].filter(n => n > 20 && n < 50000).sort((a, b) => b - a);
+
+        if (found.length > 0) {
+          // در رسیدهای شما، مبلغ کل معمولاً بزرگترین عدد تایید شده است
+          S.ocrAmounts = [found[0]];
+          S.ocrStatus = "Total Found: " + found[0];
         } else {
-          // اگر کلمه کلیدی پیدا نشد، محتاطانه عمل کن و نویز نده
-          S.ocrStatus = "Could not find Total line.";
+          S.ocrStatus = "Reading failed. Keep camera steady.";
         }
         R();
-      }).catch(function() { S.ocrStatus = "Scan Failed"; R(); });
+      }).catch(function() { S.ocrStatus = "Error"; R(); });
     };
     img.src = e.target.result;
   };
