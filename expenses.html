@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -244,70 +246,68 @@ function delEnt(id){S.data=S.data.filter(function(e){return e.id!==id;});S.modal
 function setOB(v){S.openBal=num(v);localStorage.setItem("ex_openbal",S.openBal);R();}
 
 // تابع اصلاح شده اسکن رسید
+let cropper;
+
 function scanReceipt(input) {
-  var file = input.files[0]; if (!file) return;
-  S.ocrStatus = "Deep Scanning..."; S.ocrAmounts = []; R();
-  
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    var img = new Image();
-    img.onload = function() {
-      var canvas = document.createElement("canvas");
-      // افزایش رزولوشن برای مقابله با تاری تصویر
-      canvas.width = 1000; 
-      canvas.height = img.height * (1000 / img.width);
-      var ctx = canvas.getContext("2d");
+  const file = input.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    // ایجاد یک المان تصویر موقت برای کراپ
+    const image = new Image();
+    image.src = e.target.result;
+    
+    // نمایش رابط کاربری کراپ (می‌توانید این بخش را در یک Modal قرار دهید)
+    const cropContainer = document.createElement('div');
+    cropContainer.innerHTML = `
+      <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+        <div style="width:90%; max-height:70vh;"><img id="crop-target" src="${e.target.result}" style="max-width:100%;"></div>
+        <button id="btn-crop-confirm" style="margin-top:20px; padding:15px 30px; background:#28a745; color:#fff; border:none; border-radius:5px; font-weight:bold;">تایید و اسکن مبلغ</button>
+      </div>
+    `;
+    document.body.appendChild(cropContainer);
+
+    const imgElement = document.getElementById('crop-target');
+    cropper = new Cropper(imgElement, {
+      aspectRatio: NaN, // اجازه انتخاب آزادانه کادر
+      viewMode: 1
+    });
+
+    document.getElementById('btn-crop-confirm').onclick = () => {
+      // دریافت تصویر برش خورده با کیفیت بالا
+      const croppedCanvas = cropper.getCroppedCanvas({ width: 800 });
+      const croppedImg = croppedCanvas.toDataURL("image/jpeg", 0.9);
       
-      // فیلتر ترکیبی برای بیرون کشیدن جوهر کمرنگ از کاغذ
-      ctx.filter = 'grayscale(100%) contrast(400%) brightness(80%)';
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      // پاکسازی صفحه
+      cropper.destroy();
+      document.body.removeChild(cropContainer);
       
-      Tesseract.recognize(canvas.toDataURL("image/jpeg", 0.8), 'eng').then(function(res) {
-        var lines = res.data.lines;
-        var found = [];
-
-        lines.forEach(line => {
-          var txt = line.text.toLowerCase().replace(/\s/g, ''); // حذف فاصله‌های خالی
-          
-          // جستجوی کلمات کلیدی + عدد در همان خط
-          if (txt.includes("due") || txt.includes("total") || txt.includes("amount") || txt.includes("php")) {
-            var digits = txt.match(/\d+/g);
-            if (digits) {
-              var joined = digits.join('');
-              if (joined.length >= 4) {
-                var val = parseFloat(joined.slice(0, -2) + "." + joined.slice(-2));
-                if (val > 10) found.push(val);
-              }
-            }
-          }
-        });
-
-        // اگر با کلمات کلیدی پیدا نشد، تمام اعداد ۴ رقم به بالای کل رسید را بررسی کن
-        if (found.length === 0) {
-          var matches = res.data.text.replace(/[^0-9\n]/g, '').split('\n');
-          matches.forEach(m => {
-            if (m.length >= 4) {
-              found.push(parseFloat(m.slice(0, -2) + "." + m.slice(-2)));
-            }
-          });
-        }
-
-        // فیلتر کردن نویزها: مبالغ خیلی پرت (مثل شماره تلفن یا تاریخ) را حذف کن
-        found = [...new Set(found)].filter(n => n > 20 && n < 50000).sort((a, b) => b - a);
-
-        if (found.length > 0) {
-          // در رسیدهای شما، مبلغ کل معمولاً بزرگترین عدد تایید شده است
-          S.ocrAmounts = [found[0]];
-          S.ocrStatus = "Total Found: " + found[0];
-        } else {
-          S.ocrStatus = "Reading failed. Keep camera steady.";
-        }
-        R();
-      }).catch(function() { S.ocrStatus = "Error"; R(); });
+      // شروع اسکن روی تصویر برش خورده
+      processOcr(croppedImg);
     };
-    img.src = e.target.result;
   };
   reader.readAsDataURL(file);
+}
+
+function processOcr(base64Img) {
+  S.ocrStatus = "Scanning Crop..."; S.ocrAmounts = []; R();
+  
+  Tesseract.recognize(base64Img, 'eng', {
+    tessedit_char_whitelist: '0123456789',
+    logger: m => { if(m.status === 'recognizing text') { S.ocrStatus = "Reading: " + Math.round(m.progress * 100) + "%"; R(); } }
+  }).then(res => {
+    const digits = res.data.text.replace(/[^0-9]/g, '');
+    if (digits.length >= 4) {
+      // از آنجایی که کاربر فقط روی مبلغ کراپ کرده، اولین عدد طولانی کل مبلغ است
+      const val = parseFloat(digits.slice(0, -2) + "." + digits.slice(-2));
+      S.ocrAmounts = [val];
+      S.ocrStatus = "Success!";
+    } else {
+      S.ocrStatus = "Could not read digits. Try again.";
+    }
+    R();
+  }).catch(() => { S.ocrStatus = "Error"; R(); });
 }
 function pickOcr(val,target){
   if(target==="expense")S.form.amount=String(val);
