@@ -926,6 +926,10 @@ function conn(){
 //  CRUD
 // ─────────────────────────────────────────
 function addExp(){
+  var amtEl=document.querySelector('.inp-big');
+  var descEl=document.querySelector('.inp-sm[type="text"]');
+  if(amtEl&&amtEl.value)S.form.amount=amtEl.value;
+  if(descEl)S.form.desc=descEl.value;
   if(!S.form.amount)return;
   var e={id:uid(),amount:num(S.form.amount),category:S.form.cat,desc:S.form.desc,date:S.form.date,ts:Date.now(),type:"expense"};
   S.data.push(e);
@@ -935,6 +939,10 @@ function addExp(){
   api({action:"add",id:e.id,amount:e.amount,category:e.category,desc:e.desc,date:e.date,type:"expense"}).catch(function(){});
 }
 function addInc(){
+  var amtEl=document.querySelector('.inp-big');
+  var descEl=document.querySelector('.inp-sm[type="text"]');
+  if(amtEl&&amtEl.value)S.incForm.amount=amtEl.value;
+  if(descEl)S.incForm.desc=descEl.value;
   if(!S.incForm.amount)return;
   var e={id:uid(),amount:num(S.incForm.amount),category:S.incForm.cat,desc:S.incForm.desc,date:S.incForm.date,ts:Date.now(),type:"income"};
   S.data.push(e);
@@ -977,6 +985,12 @@ function setOB(v){S.openBal=num(v);localStorage.setItem("ex_openbal",S.openBal);
 //  DEBTS
 // ─────────────────────────────────────────
 function addDebt(){
+  var amtEl=document.querySelector('.inp-big');
+  var personEl=document.querySelector('.inp-sm[placeholder="Name"]');
+  var noteEl=document.querySelector('.inp-sm[placeholder="What for?"]');
+  if(amtEl&&amtEl.value)S.debtForm.amount=amtEl.value;
+  if(personEl)S.debtForm.person=personEl.value;
+  if(noteEl)S.debtForm.desc=noteEl.value;
   if(!S.debtForm.amount||!S.debtForm.person)return;
   var orig=num(S.debtForm.amount);
   var d={
@@ -1001,18 +1015,29 @@ function openPartialPay(id){
 }
 
 function addPartialPay(){
+  // read directly from DOM in case captureForm hasn't run yet
+  var amtEl=document.querySelector('.inp-big');
+  var noteEl=document.querySelector('.inp-sm[placeholder="Note (optional)"]');
+  var dateEl=document.querySelector('input[type="date"]');
+  if(amtEl&&amtEl.value)S.partialForm.amount=amtEl.value;
+  if(noteEl)S.partialForm.note=noteEl.value;
+  if(dateEl)S.partialForm.date=dateEl.value;
+
   var f=S.partialForm;
   if(!f.amount)return;
   var idx=S.pending.findIndex(function(x){return x.id===f.id;});
   if(idx===-1)return;
   var d=S.pending[idx];
   var paid=num(f.amount);
+  if(paid<=0)return;
   if(paid>d.remaining)paid=d.remaining;
   d.payments=d.payments||[];
-  d.payments.push({amount:paid,date:f.date,note:f.note||""});
+  d.payments.push({amount:paid,date:f.date||td(),note:f.note||""});
   d.remaining=Math.max(0,d.remaining-paid);
   localStorage.setItem("ex_pending",JSON.stringify(S.pending));
-  S.modal=null;R();
+  S.modal=null;
+  S.partialForm={id:"",amount:"",note:"",date:td()};
+  R();
   toast("Payment of "+fmt(paid)+" recorded ✓");
 }
 
