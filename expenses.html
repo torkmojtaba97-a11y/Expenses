@@ -434,15 +434,52 @@ button,input,select{font-family:'Nunito',sans-serif}
 .dr-meta{font-size:10px;color:var(--txt3)}
 .dr-hint{font-size:11px;color:var(--txt3);text-align:center;padding:8px}
 
-/* ── DEBT ROWS ── */
-.debt-rw{
-  display:flex;align-items:center;gap:10px;
+/* ── DEBT CARDS ── */
+.debt-card{
   background:var(--card);border:1px solid var(--border);
-  border-radius:14px;padding:11px 13px;
-  margin-bottom:6px;
+  border-radius:16px;padding:14px;margin-bottom:10px;
 }
-.debt-rw.owe-me{border-left:3px solid var(--green)}
-.debt-rw.owe-them{border-left:3px solid var(--red)}
+.debt-card.owe-me{border-left:3px solid var(--green)}
+.debt-card.owe-them{border-left:3px solid var(--red)}
+.dc-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.dc-left{display:flex;align-items:center;gap:10px}
+.dc-ic{width:36px;height:36px;border-radius:10px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.dc-name{font-weight:700;font-size:14px}
+.dc-desc{font-size:10px;color:var(--txt3);margin-top:2px}
+.dc-right{text-align:right}
+.dc-remaining{font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:800;line-height:1}
+.dc-orig{font-size:10px;color:var(--txt3);margin-top:2px}
+
+.dc-prog-wrap{margin-bottom:10px}
+.dc-prog-bar{height:7px;background:var(--bg3);border-radius:4px;overflow:hidden;margin-bottom:4px}
+.dc-prog-fill{height:100%;border-radius:4px;transition:width .4s ease;min-width:0}
+.dc-prog-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--txt3)}
+
+.dc-history{
+  background:var(--bg3);border-radius:10px;
+  padding:8px 10px;margin-bottom:10px;
+}
+.dc-pay-row{
+  display:flex;align-items:center;gap:6px;
+  padding:4px 0;font-size:11px;
+  border-bottom:1px solid var(--border);
+}
+.dc-pay-row:last-child{border-bottom:none}
+.dc-pay-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.dc-pay-date{color:var(--txt3);min-width:70px}
+.dc-pay-note{flex:1;color:var(--txt2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dc-pay-amt{font-weight:700;font-family:'Space Grotesk',sans-serif;margin-left:auto}
+
+.dc-actions{display:flex;gap:6px}
+.dc-btn{
+  flex:1;padding:8px 6px;border-radius:10px;border:1.5px solid var(--border);
+  background:var(--bg3);color:var(--txt2);font-size:11px;font-weight:600;
+  cursor:pointer;transition:all .15s;text-align:center;
+}
+.dc-btn:active{transform:scale(.97)}
+.dc-btn-pay{flex:2}
+.dc-btn-settle{flex:2;border-color:currentColor}
+.dc-btn-del{flex:0.6;color:var(--red)!important}
 
 /* ── HISTORY FILTERS ── */
 .chips{
@@ -811,6 +848,7 @@ var S={
   ocrAmounts:[],
   pending:JSON.parse(localStorage.getItem("ex_pending")||"[]"),
   darkMode:localStorage.getItem("ex_theme")==="dark",
+  partialForm:{id:"",amount:"",note:"",date:""},
 };
 
 function applyTheme(){
@@ -940,27 +978,62 @@ function setOB(v){S.openBal=num(v);localStorage.setItem("ex_openbal",S.openBal);
 // ─────────────────────────────────────────
 function addDebt(){
   if(!S.debtForm.amount||!S.debtForm.person)return;
-  var d={id:uid(),person:S.debtForm.person,amount:num(S.debtForm.amount),type:S.debtForm.type,desc:S.debtForm.desc,date:td()};
+  var orig=num(S.debtForm.amount);
+  var d={
+    id:uid(),
+    person:S.debtForm.person,
+    amount:orig,
+    remaining:orig,
+    type:S.debtForm.type,
+    desc:S.debtForm.desc,
+    date:td(),
+    payments:[]
+  };
   S.pending.push(d);
   localStorage.setItem("ex_pending",JSON.stringify(S.pending));
   S.debtForm={person:"",amount:"",type:"owe_me",desc:""};
   S.modal=null;R();toast("Debt logged ✓");
 }
+
+function openPartialPay(id){
+  S.partialForm={id:id,amount:"",note:"",date:td()};
+  S.modal="partial";R();
+}
+
+function addPartialPay(){
+  var f=S.partialForm;
+  if(!f.amount)return;
+  var idx=S.pending.findIndex(function(x){return x.id===f.id;});
+  if(idx===-1)return;
+  var d=S.pending[idx];
+  var paid=num(f.amount);
+  if(paid>d.remaining)paid=d.remaining;
+  d.payments=d.payments||[];
+  d.payments.push({amount:paid,date:f.date,note:f.note||""});
+  d.remaining=Math.max(0,d.remaining-paid);
+  localStorage.setItem("ex_pending",JSON.stringify(S.pending));
+  S.modal=null;R();
+  toast("Payment of "+fmt(paid)+" recorded ✓");
+}
+
 function settleDebt(id){
   var idx=S.pending.findIndex(function(x){return x.id===id;});
   if(idx===-1)return;
   var d=S.pending[idx];
+  var remaining=num(d.remaining!==undefined?d.remaining:d.amount);
+  if(!confirm("Mark as fully settled?\n\nRemaining: "+fmt(remaining)+"\n\nThis will add it to your main transactions."))return;
   if(d.type==="owe_me"){
-    S.incForm={amount:String(d.amount),cat:"other_inc",desc:"Settled: "+d.person,date:td()};
+    S.incForm={amount:String(remaining),cat:"other_inc",desc:"Settled: "+d.person,date:td()};
     addInc();
   }else{
-    S.form={amount:String(d.amount),cat:"other",desc:"Settled: "+d.person,date:td()};
+    S.form={amount:String(remaining),cat:"other",desc:"Settled: "+d.person,date:td()};
     addExp();
   }
   S.pending.splice(idx,1);
   localStorage.setItem("ex_pending",JSON.stringify(S.pending));
   R();toast("Debt settled ✓");
 }
+
 function delDebt(id){
   if(!confirm("Delete this debt?"))return;
   S.pending=S.pending.filter(function(x){return x.id!==id;});
@@ -1099,6 +1172,11 @@ function captureForm(){
     if(a&&a.value!=="")S.debtForm.amount=a.value;
     if(person)S.debtForm.person=person.value;
     if(note)S.debtForm.desc=note.value;
+  }else if(S.modal==="partial"){
+    var pa=document.querySelector('.inp-big');
+    var pn=document.querySelector('.inp-sm[placeholder="Note (optional)"]');
+    if(pa&&pa.value!=="")S.partialForm.amount=pa.value;
+    if(pn)S.partialForm.note=pn.value;
   }else if(S.modal==="edit"){
     if(a&&a.value!=="")S.editForm.amount=a.value;
     if(d)S.editForm.desc=d.value;
@@ -1221,37 +1299,75 @@ function doRender(){
   else if(S.page==="debts"){
     var oweMe=S.pending.filter(function(d){return d.type==="owe_me";});
     var oweThem=S.pending.filter(function(d){return d.type==="owe_them";});
-    var totOweMe=tot(oweMe);var totOweThem=tot(oweThem);
+    var totOweMe=0;oweMe.forEach(function(d){totOweMe+=num(d.remaining!==undefined?d.remaining:d.amount);});
+    var totOweThem=0;oweThem.forEach(function(d){totOweThem+=num(d.remaining!==undefined?d.remaining:d.amount);});
 
     content='<div class="sec">Debt Summary</div>'+
       '<div class="debt-summary">'+
       '<div class="debt-sum-card"><div class="ds-label">They owe me</div><div class="ds-val" style="color:var(--green)">'+fmt(totOweMe)+'</div></div>'+
       '<div class="debt-sum-card"><div class="ds-label">I owe them</div><div class="ds-val" style="color:var(--red)">'+fmt(totOweThem)+'</div></div>'+
       '</div>';
+    content+='<button class="btn btn-i" style="margin-bottom:14px;margin-top:0" onclick="S.modal=\'debt\';R()">＋ Add New Debt</button>';
 
-    content+='<button class="btn btn-i" style="margin-bottom:12px;margin-top:0" onclick="S.modal=\'debt\';R()">＋ Add Debt</button>';
+    function mkDebtCard(d){
+      var isCredit=d.type==="owe_me";
+      var original=num(d.amount);
+      var remaining=num(d.remaining!==undefined?d.remaining:d.amount);
+      var paid=original-remaining;
+      var pct=original>0?Math.round(paid/original*100):0;
+      var payments=d.payments||[];
+
+      var card='<div class="debt-card '+(isCredit?"owe-me":"owe-them")+'">';
+      // header row
+      card+='<div class="dc-head">'+
+        '<div class="dc-left">'+
+        '<div class="dc-ic">'+(isCredit?'🤝':'💸')+'</div>'+
+        '<div><div class="dc-name">'+d.person+'</div>'+
+        (d.desc?'<div class="dc-desc">'+d.desc+'</div>':'')+
+        '</div></div>'+
+        '<div class="dc-right">'+
+        '<div class="dc-remaining" style="color:'+(isCredit?"var(--green)":"var(--red)")+'">'+fmt(remaining)+'</div>'+
+        '<div class="dc-orig">of '+fmt(original)+'</div>'+
+        '</div></div>';
+
+      // progress bar
+      card+='<div class="dc-prog-wrap">'+
+        '<div class="dc-prog-bar"><div class="dc-prog-fill" style="width:'+pct+'%;background:'+(isCredit?"var(--green)":"var(--red)")+'"></div></div>'+
+        '<div class="dc-prog-labels"><span>Paid '+fmt(paid)+'</span><span>'+pct+'%</span></div>'+
+        '</div>';
+
+      // payment history
+      if(payments.length){
+        card+='<div class="dc-history">';
+        payments.forEach(function(p){
+          card+='<div class="dc-pay-row">'+
+            '<span class="dc-pay-dot" style="background:'+(isCredit?"var(--green)":"var(--red)")+'"></span>'+
+            '<span class="dc-pay-date">'+p.date+'</span>'+
+            (p.note?'<span class="dc-pay-note">'+p.note+'</span>':'')+
+            '<span class="dc-pay-amt">'+fmt(p.amount)+'</span>'+
+            '</div>';
+        });
+        card+='</div>';
+      }
+
+      // action buttons
+      card+='<div class="dc-actions">'+
+        '<button class="dc-btn dc-btn-pay" onclick="openPartialPay(\''+d.id+'\')">💳 Pay partial</button>'+
+        '<button class="dc-btn dc-btn-settle" onclick="settleDebt(\''+d.id+'\')" style="color:'+(isCredit?"var(--green)":"var(--red)")+'">✅ Settle</button>'+
+        '<button class="dc-btn dc-btn-del" onclick="delDebt(\''+d.id+'\')">🗑️</button>'+
+        '</div>';
+
+      card+='</div>';
+      return card;
+    }
 
     if(oweMe.length){
       content+='<div class="sec">They owe me 🤝</div>';
-      oweMe.forEach(function(d){
-        content+='<div class="debt-rw owe-me">'+
-          '<div class="ic" style="background:var(--green-dim)">🤝</div>'+
-          '<div class="nfo"><div class="nm">'+d.person+'</div><div class="dt">'+(d.desc||'')+(d.desc&&d.date?' · ':'')+d.date+'</div></div>'+
-          '<div class="am am-g">+'+fmt(d.amount)+'</div>'+
-          '<button class="ed-btn" onclick="settleDebt(\''+d.id+'\')" title="Mark settled">✅</button>'+
-          '<button class="ed-btn" onclick="delDebt(\''+d.id+'\')" title="Delete">🗑️</button></div>';
-      });
+      oweMe.forEach(function(d){content+=mkDebtCard(d);});
     }
     if(oweThem.length){
       content+='<div class="sec">I owe them 💸</div>';
-      oweThem.forEach(function(d){
-        content+='<div class="debt-rw owe-them">'+
-          '<div class="ic" style="background:var(--red-dim)">💸</div>'+
-          '<div class="nfo"><div class="nm">'+d.person+'</div><div class="dt">'+(d.desc||'')+(d.desc&&d.date?' · ':'')+d.date+'</div></div>'+
-          '<div class="am am-r">−'+fmt(d.amount)+'</div>'+
-          '<button class="ed-btn" onclick="settleDebt(\''+d.id+'\')" title="Mark settled">✅</button>'+
-          '<button class="ed-btn" onclick="delDebt(\''+d.id+'\')" title="Delete">🗑️</button></div>';
-      });
+      oweThem.forEach(function(d){content+=mkDebtCard(d);});
     }
     if(!S.pending.length){
       content+='<div class="empty"><span>🎉</span>No pending debts</div>';
@@ -1434,6 +1550,28 @@ function doRender(){
         '<label class="lb">Note</label>'+
         '<input class="inp-sm" type="text" placeholder="What for?" value="'+S.debtForm.desc+'" oninput="S.debtForm.desc=this.value">'+
         '<button class="btn btn-i" onclick="addDebt()">Save Debt</button>';
+    }
+    // ── Partial Payment Modal ──
+    else if(S.modal==="partial"){
+      var pd=S.pending.find(function(x){return x.id===S.partialForm.id;});
+      var pdRemaining=pd?num(pd.remaining!==undefined?pd.remaining:pd.amount):0;
+      var isCredit=pd&&pd.type==="owe_me";
+      md='<div class="md-h"><h3>Record Payment</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>';
+      if(pd){
+        md+='<div style="background:var(--bg3);border-radius:12px;padding:12px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">'+
+          '<div><div style="font-size:11px;color:var(--txt3)">Remaining balance</div><div style="font-family:\'Space Grotesk\',sans-serif;font-size:22px;font-weight:800;color:'+(isCredit?"var(--green)":"var(--red)")+'">'+fmt(pdRemaining)+'</div></div>'+
+          '<div style="font-size:13px;font-weight:600">'+pd.person+'</div>'+
+          '</div>';
+      }
+      md+='<label class="lb">Amount paid</label>'+
+        '<input class="inp-big" type="number" inputmode="decimal" placeholder="0.00" value="'+S.partialForm.amount+'">'+
+        '<label class="lb">Date</label>'+
+        '<input class="inp-sm" type="date" value="'+S.partialForm.date+'" onchange="S.partialForm.date=this.value">'+
+        '<label class="lb">Note (optional)</label>'+
+        '<input class="inp-sm" type="text" placeholder="Note (optional)" value="'+S.partialForm.note+'">'+
+        '<div style="font-size:10px;color:var(--txt3);margin-top:8px;padding:8px;background:var(--bg3);border-radius:8px">'+
+        '⚠️ This only records the payment. The debt stays pending until you tap <b>Settle</b>.</div>'+
+        '<button class="btn '+(isCredit?"btn-i":"btn-e")+'" onclick="addPartialPay()">Save Payment</button>';
     }
     // ── Edit Modal ──
     else if(S.modal==="edit"){
