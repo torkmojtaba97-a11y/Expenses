@@ -181,8 +181,52 @@ var S={
   ocrStatus:"",
   ocrAmounts:[],
   ocrImg:null
+  pending: JSON.parse(localStorage.getItem("ex_pending")) || [],
+  debtForm: {person: "", amount: "", type: "owe_me", desc: ""},
 };
+function addDebt() {
+    if(!S.debtForm.amount || !S.debtForm.person) return;
+    var d = {
+        id: Date.now().toString(36),
+        person: S.debtForm.person,
+        amount: num(S.debtForm.amount),
+        type: S.debtForm.type,
+        desc: S.debtForm.desc,
+        date: td()
+    };
+    S.pending.push(d);
+    localStorage.setItem("ex_pending", JSON.stringify(S.pending));
+    S.debtForm = {person: "", amount: "", type: "owe_me", desc: ""};
+    S.modal = null;
+    R();
+}
 
+function settleDebt(id) {
+    var idx = S.pending.findIndex(function(x){ return x.id === id; });
+    if(idx === -1) return;
+    var d = S.pending[idx];
+    
+    // انتقال به تراکنش‌های اصلی
+    if(d.type === 'owe_me') {
+        S.incForm = {amount: String(d.amount), cat: "other_inc", desc: "Settled: " + d.person, date: td()};
+        addInc();
+    } else {
+        S.form = {amount: String(d.amount), cat: "other", desc: "Settled: " + d.person, date: td()};
+        addExp();
+    }
+    
+    // حذف از لیست بدهی‌ها
+    S.pending.splice(idx, 1);
+    localStorage.setItem("ex_pending", JSON.stringify(S.pending));
+    R();
+}
+
+function delDebt(id) {
+    if(!confirm("Delete this debt?")) return;
+    S.pending = S.pending.filter(function(x){ return x.id !== id; });
+    localStorage.setItem("ex_pending", JSON.stringify(S.pending));
+    R();
+}
 function cleanData(arr){
   for(var i=0;i<arr.length;i++){
     arr[i].amount=num(arr[i].amount);
@@ -462,6 +506,20 @@ function doRender(){
       '<div class="st"><div class="sl">Income</div><div class="sv" style="color:#16a34a">'+fmt(mInc)+'</div></div>'+
       '<div class="st"><div class="sl">Expenses</div><div class="sv" style="color:#dc2626">'+fmt(mExp)+'</div></div>'+
       '<div class="st"><div class="sl">Net</div><div class="sv" style="color:'+(mInc-mExp>=0?"#16a34a":"#dc2626")+'">'+(mInc-mExp>=0?"+":"")+fmt(mInc-mExp)+'</div></div></div>';
+content += '<div class="sec">Debt Tracker (Pending)</div>';
+if(!S.pending || !S.pending.length) {
+    content += '<div class="empty">No pending debts</div>';
+} else {
+    S.pending.forEach(function(d) {
+        var isCredit = d.type === 'owe_me';
+        content += '<div class="rw" style="border-left:3px solid '+(isCredit?'#4ade80':'#f87171')+'">'+
+            '<div class="ic" style="background:#f1f5f9">'+(isCredit?'🤝':'💸')+'</div>'+
+            '<div class="nfo"><div class="nm">'+d.person+'</div><div class="dt">'+(d.desc || 'No note')+'</div></div>'+
+            '<div class="am '+(isCredit?'am-g':'am-r')+'">'+fmt(d.amount)+'</div>'+
+            '<button class="ed-btn" onclick="settleDebt(\''+d.id+'\')">✅</button>'+
+            '<button class="ed-btn" onclick="delDebt(\''+d.id+'\')">🗑️</button></div>';
+    });
+} 
   }
 
   if(S.page==="report"){
@@ -546,13 +604,26 @@ function doRender(){
   for(var i=0;i<tabs.length;i++)nav+='<button class="'+(S.page===tabs[i].p?"on":"")+'" onclick="S.page=\''+tabs[i].p+'\';R()"><i>'+tabs[i].i+'</i>'+tabs[i].l+'</button>';
   nav+='</div>';
 
-  var fabs='<div class="fabs"><button class="fb fb-e" onclick="S.modal=\'expense\';S.ocrImg=null;S.ocrAmounts=[];S.ocrStatus=\'\';R()">\u2212</button><button class="fb fb-i" onclick="S.modal=\'income\';S.ocrImg=null;S.ocrAmounts=[];S.ocrStatus=\'\';R()">+</button></div>';
-
+  var fabs = '<div class="fabs">' +
+    '<button class="fb fb-e" onclick="S.modal=\'expense\';S.ocrImg=null;S.ocrAmounts=[];S.ocrStatus=\'\';R()">\u2212</button>' +
+    '<button class="fb" style="background:#7c3aed" onclick="S.modal=\'debt\';R()">🤝</button>' +
+    '<button class="fb fb-i" onclick="S.modal=\'income\';S.ocrImg=null;S.ocrAmounts=[];S.ocrStatus=\'\';R()">+</button>' +
+    '</div>';
   var modals="";
   if(S.modal==="expense")modals=expMd();
   if(S.modal==="income")modals=incMd();
   if(S.modal==="edit")modals=edMd();
   if(S.modal==="settings")modals=setMd();
+  if(S.modal === "debt") {
+    content += '<div class="ov"><div class="md"><div class="md-h"><h3>Add Debt/Loan</h3><button onclick="S.modal=null;R()">✕</button></div>'+
+        '<label class="lb">Type</label><div class="cg" style="grid-template-columns:1fr 1fr;margin-bottom:10px">'+
+        '<button class="cb" style="border-color:'+(S.debtForm.type==='owe_me'?'#16a34a':'#e2e8f0')+'" onclick="S.debtForm.type=\'owe_me\';R()">They owe me</button>'+
+        '<button class="cb" style="border-color:'+(S.debtForm.type==='i_owe'?'#dc2626':'#e2e8f0')+'" onclick="S.debtForm.type=\'i_owe\';R()">I owe them</button></div>'+
+        '<label class="lb">Person Name</label><input class="inp" value="'+S.debtForm.person+'" oninput="S.debtForm.person=this.value">'+
+        '<label class="lb">Amount</label><input class="inp-big" type="number" inputmode="decimal" value="'+S.debtForm.amount+'" oninput="S.debtForm.amount=this.value">'+
+        '<label class="lb">Note (Optional)</label><input class="inp" value="'+S.debtForm.desc+'" oninput="S.debtForm.desc=this.value">'+
+        '<button class="btn btn-e" style="background:#7c3aed" onclick="addDebt()">Save to Pending</button></div></div>';
+}
 
   app.innerHTML=header+nav+'<div class="ct">'+content+'</div>'+fabs+modals;
 }
