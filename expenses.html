@@ -1080,7 +1080,30 @@ function mkOcr(target){
 //  RENDER
 // ─────────────────────────────────────────
 var _rt=null;
-function R(){if(_rt)return;_rt=requestAnimationFrame(function(){_rt=null;doRender();});}
+function R(){if(_rt)return;_rt=requestAnimationFrame(function(){_rt=null;captureForm();doRender();});}
+
+function captureForm(){
+  // read live input values from DOM before re-rendering so they aren't lost
+  if(!S.modal)return;
+  var a=document.querySelector('.inp-big');
+  var d=document.querySelector('.inp-sm[type="text"]');
+  if(S.modal==="expense"){
+    if(a&&a.value!=="")S.form.amount=a.value;
+    if(d)S.form.desc=d.value;
+  }else if(S.modal==="income"){
+    if(a&&a.value!=="")S.incForm.amount=a.value;
+    if(d)S.incForm.desc=d.value;
+  }else if(S.modal==="debt"){
+    var person=document.querySelector('.inp-sm[placeholder="Name"]');
+    var note=document.querySelector('.inp-sm[placeholder="What for?"]');
+    if(a&&a.value!=="")S.debtForm.amount=a.value;
+    if(person)S.debtForm.person=person.value;
+    if(note)S.debtForm.desc=note.value;
+  }else if(S.modal==="edit"){
+    if(a&&a.value!=="")S.editForm.amount=a.value;
+    if(d)S.editForm.desc=d.value;
+  }
+}
 
 function doRender(){
   var app=document.getElementById("app");
@@ -1129,7 +1152,6 @@ function doRender(){
     '<div class="hd-acts">'+
     '<button class="hd-btn" onclick="toggleTheme()" title="Toggle theme" id="theme-btn">'+(S.darkMode?'☀️':'🌙')+'</button>'+
     '<button class="hd-btn" onclick="load()" title="Refresh">🔄</button>'+
-    '<button class="hd-btn" onclick="S.modal=\'debt\';R()" title="Add debt">🤝</button>'+
     '</div></div>';
 
   // balance card
@@ -1151,12 +1173,12 @@ function doRender(){
 
   // ── NAV ──
   h+='<div class="nv">'+
-    ['home','report','history','settings'].map(function(p){
-      var icons={home:"🏠",report:"📊",history:"📋",settings:"⚙️"};
-      var labels={home:"Home",report:"Report",history:"History",settings:"Settings"};
-      return '<button class="nv-btn'+(S.page===p?" on":"")+'" onclick="S.page=\''+p+'\';R()">'+
+    ['home','debts','report','history','settings'].map(function(p){
+      var icons={home:'🏠',debts:'🤝',report:'📊',history:'📋',settings:'⚙️'};
+      var labels={home:'Home',debts:'Debts',report:'Report',history:'History',settings:'Settings'};
+      return '<button class="nv-btn'+(S.page===p?' on':'')+'" onclick="S.page=\''+p+'\';R()">'+
         '<i>'+icons[p]+'</i>'+labels[p]+'</button>';
-    }).join("")+
+    }).join('')+
   '</div>';
 
   // ── CONTENT ──
@@ -1193,29 +1215,46 @@ function doRender(){
       '<div class="st"><div class="sl">Spent</div><div class="sv" style="color:var(--red)">'+fmt(mExp)+'</div></div>'+
       '<div class="st"><div class="sl">Saved</div><div class="sv" style="color:'+(mInc-mExp>=0?"var(--green)":"var(--red)")+'">'+fmt(Math.abs(mInc-mExp))+'</div></div>'+
       '</div>';
+  }
 
-    // debts
+  // ════════ DEBTS ════════
+  else if(S.page==="debts"){
     var oweMe=S.pending.filter(function(d){return d.type==="owe_me";});
     var oweThem=S.pending.filter(function(d){return d.type==="owe_them";});
     var totOweMe=tot(oweMe);var totOweThem=tot(oweThem);
 
-    content+='<div class="sec">Debt Tracker</div>';
-    if(S.pending.length){
-      content+='<div class="debt-summary">'+
-        '<div class="debt-sum-card"><div class="ds-label">They owe me</div><div class="ds-val" style="color:var(--green)">'+fmt(totOweMe)+'</div></div>'+
-        '<div class="debt-sum-card"><div class="ds-label">I owe them</div><div class="ds-val" style="color:var(--red)">'+fmt(totOweThem)+'</div></div>'+
-        '</div>';
-      S.pending.forEach(function(d){
-        var isCredit=d.type==="owe_me";
-        content+='<div class="debt-rw '+(isCredit?"owe-me":"owe-them")+'">'+
-          '<div class="ic" style="background:'+(isCredit?"var(--green-dim)":"var(--red-dim)")+'">'+(isCredit?"🤝":"💸")+'</div>'+
-          '<div class="nfo"><div class="nm">'+d.person+'</div><div class="dt">'+(d.desc||d.date)+'</div></div>'+
-          '<div class="am '+(isCredit?"am-g":"am-r")+'">'+fmt(d.amount)+'</div>'+
-          '<button class="ed-btn" onclick="settleDebt(\''+d.id+'\')">✅</button>'+
-          '<button class="ed-btn" onclick="delDebt(\''+d.id+'\')">🗑️</button></div>';
+    content='<div class="sec">Debt Summary</div>'+
+      '<div class="debt-summary">'+
+      '<div class="debt-sum-card"><div class="ds-label">They owe me</div><div class="ds-val" style="color:var(--green)">'+fmt(totOweMe)+'</div></div>'+
+      '<div class="debt-sum-card"><div class="ds-label">I owe them</div><div class="ds-val" style="color:var(--red)">'+fmt(totOweThem)+'</div></div>'+
+      '</div>';
+
+    content+='<button class="btn btn-i" style="margin-bottom:12px;margin-top:0" onclick="S.modal=\'debt\';R()">＋ Add Debt</button>';
+
+    if(oweMe.length){
+      content+='<div class="sec">They owe me 🤝</div>';
+      oweMe.forEach(function(d){
+        content+='<div class="debt-rw owe-me">'+
+          '<div class="ic" style="background:var(--green-dim)">🤝</div>'+
+          '<div class="nfo"><div class="nm">'+d.person+'</div><div class="dt">'+(d.desc||'')+(d.desc&&d.date?' · ':'')+d.date+'</div></div>'+
+          '<div class="am am-g">+'+fmt(d.amount)+'</div>'+
+          '<button class="ed-btn" onclick="settleDebt(\''+d.id+'\')" title="Mark settled">✅</button>'+
+          '<button class="ed-btn" onclick="delDebt(\''+d.id+'\')" title="Delete">🗑️</button></div>';
       });
-    }else{
-      content+='<div class="empty"><span>🤝</span>No pending debts</div>';
+    }
+    if(oweThem.length){
+      content+='<div class="sec">I owe them 💸</div>';
+      oweThem.forEach(function(d){
+        content+='<div class="debt-rw owe-them">'+
+          '<div class="ic" style="background:var(--red-dim)">💸</div>'+
+          '<div class="nfo"><div class="nm">'+d.person+'</div><div class="dt">'+(d.desc||'')+(d.desc&&d.date?' · ':'')+d.date+'</div></div>'+
+          '<div class="am am-r">−'+fmt(d.amount)+'</div>'+
+          '<button class="ed-btn" onclick="settleDebt(\''+d.id+'\')" title="Mark settled">✅</button>'+
+          '<button class="ed-btn" onclick="delDebt(\''+d.id+'\')" title="Delete">🗑️</button></div>';
+      });
+    }
+    if(!S.pending.length){
+      content+='<div class="empty"><span>🎉</span>No pending debts</div>';
     }
   }
 
@@ -1342,7 +1381,11 @@ function doRender(){
   h+='<div class="ct">'+content+'</div>';
 
   // ── FABs ──
-  if(S.page!=="settings"){
+  if(S.page==="debts"){
+    h+='<div class="fabs">'+
+      '<button class="fab fab-i" onclick="S.modal=\'debt\';R()"><span>＋</span> Add Debt</button>'+
+      '</div>';
+  }else if(S.page!=="settings"){
     h+='<div class="fabs">'+
       '<button class="fab fab-e" onclick="S.modal=\'expense\';R()"><span>＋</span> Expense</button>'+
       '<button class="fab fab-i" onclick="S.modal=\'income\';R()"><span>＋</span> Income</button>'+
@@ -1362,7 +1405,7 @@ function doRender(){
         '<label class="lb">Date</label>'+
         '<input class="inp-sm" type="date" value="'+S.form.date+'" onchange="S.form.date=this.value">'+
         mkOcr("expense")+
-        '<button class="btn btn-e" onclick="addExp()" '+(S.form.amount?"":"disabled")+'>Save Expense</button>';
+        '<button class="btn btn-e" onclick="addExp()">Save Expense</button>';
     }
     // ── Add Income Modal ──
     else if(S.modal==="income"){
@@ -1374,7 +1417,7 @@ function doRender(){
         '<label class="lb">Date</label>'+
         '<input class="inp-sm" type="date" value="'+S.incForm.date+'" onchange="S.incForm.date=this.value">'+
         mkOcr("income")+
-        '<button class="btn btn-i" onclick="addInc()" '+(S.incForm.amount?"":"disabled")+'>Save Income</button>';
+        '<button class="btn btn-i" onclick="addInc()">Save Income</button>';
     }
     // ── Add Debt Modal ──
     else if(S.modal==="debt"){
@@ -1390,7 +1433,7 @@ function doRender(){
         '<input class="inp-big" type="number" inputmode="decimal" placeholder="0.00" value="'+S.debtForm.amount+'" oninput="S.debtForm.amount=this.value">'+
         '<label class="lb">Note</label>'+
         '<input class="inp-sm" type="text" placeholder="What for?" value="'+S.debtForm.desc+'" oninput="S.debtForm.desc=this.value">'+
-        '<button class="btn btn-i" onclick="addDebt()" '+(S.debtForm.amount&&S.debtForm.person?"":"disabled")+'>Save Debt</button>';
+        '<button class="btn btn-i" onclick="addDebt()">Save Debt</button>';
     }
     // ── Edit Modal ──
     else if(S.modal==="edit"){
