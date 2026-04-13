@@ -895,12 +895,14 @@ function api(p){
 function syncResponse(r){
   if(r.ok){
     S.data=cleanData(r.data||[]);
-    if(Array.isArray(r.pending)&&r.pending.length){
-      // merge server pending with local, server wins on conflict
-      var serverIds=r.pending.map(function(x){return x.id;});
-      var localOnly=S.pending.filter(function(x){return serverIds.indexOf(x.id)===-1;});
-      S.pending=r.pending.concat(localOnly);
-      S.pending.forEach(function(d){d.amount=num(d.amount);});
+    // always replace pending with server data (server is source of truth)
+    if(Array.isArray(r.pending)){
+      S.pending=r.pending.map(function(d){
+        d.amount=num(d.amount);
+        d.remaining=d.remaining!==undefined?num(d.remaining):d.amount;
+        d.payments=Array.isArray(d.payments)?d.payments:[];
+        return d;
+      });
       localStorage.setItem("ex_pending",JSON.stringify(S.pending));
     }
   }
@@ -998,20 +1000,13 @@ function addDebt(){
   if(noteEl)S.debtForm.desc=noteEl.value;
   if(!S.debtForm.amount||!S.debtForm.person)return;
   var orig=num(S.debtForm.amount);
-  var d={
-    id:uid(),
-    person:S.debtForm.person,
-    amount:orig,
-    remaining:orig,
-    type:S.debtForm.type,
-    desc:S.debtForm.desc,
-    date:td(),
-    payments:[]
-  };
+  var d={id:uid(),person:S.debtForm.person,amount:orig,remaining:orig,type:S.debtForm.type,desc:S.debtForm.desc,date:td(),payments:[]};
   S.pending.push(d);
   localStorage.setItem("ex_pending",JSON.stringify(S.pending));
   S.debtForm={person:"",amount:"",type:"owe_me",desc:""};
   S.modal=null;R();toast("Debt logged ✓");
+  // sync to Sheets so other devices see it
+  api({action:"add_debt",id:d.id,person:d.person,amount:d.amount,type:d.type,desc:d.desc,date:d.date,remaining:d.remaining,payments:"[]"}).catch(function(){});
 }
 
 function openPartialPay(id){
@@ -1058,6 +1053,8 @@ function addPartialPay(){
   d.payments.push(payEntry);
   d.remaining=Math.max(0,d.remaining-paid);
   localStorage.setItem("ex_pending",JSON.stringify(S.pending));
+  // sync updated debt to Sheets
+  api({action:"update_debt",id:d.id,remaining:d.remaining,payments:JSON.stringify(d.payments)}).catch(function(){});
   S.modal=null;
   S.partialForm={id:"",amount:"",note:"",date:td(),applyNow:false};
   R();
@@ -1072,11 +1069,9 @@ function applyPayment(debtId,pIdx){
   var p=d.payments[pIdx];
   if(!p||p.applied)return;
   p.applied=true;
+  localStorage.setItem("ex_pending",JSON.stringify(S.pending));
+  api({action:"update_debt",id:d.id,remaining:d.remaining,payments:JSON.stringify(d.payments)}).catch(function(){});
   if(d.type==="owe_me"){
-    var e1={id:uid(),amount:p.amount,category:"other_inc",desc:"Payment from "+d.person+(p.note?" · "+p.note:""),date:p.date,ts:Date.now(),type:"income"};
-    S.data.push(e1);
-    api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"income"}).catch(function(){});
-  }else{
     var e2={id:uid(),amount:p.amount,category:"other",desc:"Payment to "+d.person+(p.note?" · "+p.note:""),date:p.date,ts:Date.now(),type:"expense"};
     S.data.push(e2);
     api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"expense"}).catch(function(){});
@@ -1113,6 +1108,7 @@ function settleDebt(id){
   }
   S.pending.splice(idx,1);
   localStorage.setItem("ex_pending",JSON.stringify(S.pending));
+  api({action:"delete_debt",id:id}).catch(function(){});
   S.modal=null;R();toast("Debt settled ✓");
 }
 
@@ -1120,6 +1116,7 @@ function delDebt(id){
   if(!confirm("Delete this debt?"))return;
   S.pending=S.pending.filter(function(x){return x.id!==id;});
   localStorage.setItem("ex_pending",JSON.stringify(S.pending));
+  api({action:"delete_debt",id:id}).catch(function(){});
   R();toast("Deleted");
 }
 
@@ -1390,6 +1387,31 @@ function doRender(){
       '<div class="debt-sum-card"><div class="ds-label">I owe them</div><div class="ds-val" style="color:var(--red)">'+fmt(totOweThem)+'</div></div>'+
       '</div>';
     content+='<button class="btn btn-i" style="margin-bottom:14px;margin-top:0" onclick="S.modal=\'debt\';R()">＋ Add New Debt</button>';
+
+    // ── Balance Preview ──
+    var tI2=tot(getI()),tE2=tot(getE());
+    var curBal=S.openBal+tI2-tE2;
+    var ifAllSettled=curBal+totOweMe-totOweThem;
+    content+='<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:14px">'+
+      '<div style="font-size:10px;color:var(--txt3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📊 Balance Preview — if all debts settled</div>'+
+      '<div style="display:flex;gap:8px">'+
+      '<div style="flex:1;background:var(--bg3);border-radius:10px;padding:10px;text-align:center">'+
+        '<div style="font-size:9px;color:var(--txt3);margin-bottom:3px">Current</div>'+
+        '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:16px;font-weight:800;color:'+(curBal>=0?"var(--green)":"var(--red)")+'">'+fmt(curBal)+'</div>'+
+      '</div>'+
+      '<div style="display:flex;align-items:center;color:var(--txt3);font-size:18px">→</div>'+
+      '<div style="flex:1;background:var(--bg3);border-radius:10px;padding:10px;text-align:center;border:2px solid '+(ifAllSettled>=curBal?"var(--green)":"var(--red)")+'">'+
+        '<div style="font-size:9px;color:var(--txt3);margin-bottom:3px">If all settled</div>'+
+        '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:16px;font-weight:800;color:'+(ifAllSettled>=0?"var(--green)":"var(--red)")+'">'+fmt(ifAllSettled)+'</div>'+
+      '</div>'+
+      '</div>'+
+      (totOweMe>0||totOweThem>0?
+        '<div style="font-size:10px;color:var(--txt3);margin-top:8px;text-align:center">'+
+        (totOweMe>0?'<span style="color:var(--green)">+'+fmt(totOweMe)+' receivable</span>':'')+
+        (totOweMe>0&&totOweThem>0?' &nbsp;·&nbsp; ':'')+
+        (totOweThem>0?'<span style="color:var(--red)">−'+fmt(totOweThem)+' payable</span>':'')+
+        '</div>':'')+
+      '</div>';
 
     function mkDebtCard(d){
       var isCredit=d.type==="owe_me";
