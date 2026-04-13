@@ -246,54 +246,50 @@ function setOB(v){S.openBal=num(v);localStorage.setItem("ex_openbal",S.openBal);
 // تابع اصلاح شده اسکن رسید
 function scanReceipt(input) {
   var file = input.files[0]; if (!file) return;
-  S.ocrStatus = "Targeting Total..."; S.ocrAmounts = []; R();
+  S.ocrStatus = "Targeting Amount Due..."; S.ocrAmounts = []; R();
   
   var reader = new FileReader();
   reader.onload = function(e) {
     var img = new Image();
     img.onload = function() {
       var canvas = document.createElement("canvas");
-      // افزایش عرض به 800 برای دقت بیشتر در فونت‌های ریز
-      canvas.width = 800; 
+      canvas.width = 800; // رزولوشن بالا برای تفکیک اعداد از نویز
       canvas.height = img.height * (800 / img.width);
       var ctx = canvas.getContext("2d");
       
-      // فیلتر اختصاصی برای فونت‌های محو رسیدهای حرارتی
-      ctx.filter = 'grayscale(100%) contrast(350%) brightness(100%)';
+      // فیلتر فوق‌العاده سنگین برای حذف نویز (فقط متن مشکی باقی می‌ماند)
+      ctx.filter = 'grayscale(100%) contrast(400%) brightness(90%)';
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       
       Tesseract.recognize(canvas.toDataURL("image/jpeg", 0.8), 'eng').then(function(res) {
         var lines = res.data.lines;
-        var found = [];
+        var finalPrice = null;
 
-        lines.forEach(line => {
-          var text = line.text.toLowerCase();
-          // ۱. فقط خطوطی که شامل کلمات کلیدی مربوط به مبلغ نهایی هستند
-          if (text.includes("due") || text.includes("total") || text.includes("amount") || text.includes("pay")) {
-            // ۲. حذف تمام کاراکترهای غیر عددی حتی نقطه و کاما (برای جلوگیری از خطای ۴.۱۹۵)
-            var digits = text.replace(/[^0-9]/g, '');
+        // جستجوی خط به خط برای پیدا کردن کلمه کلیدی
+        for (var i = 0; i < lines.length; i++) {
+          var lineText = lines[i].text.toLowerCase();
+          
+          if (lineText.includes("due") || lineText.includes("total") || lineText.includes("pay")) {
+            // استخراج اعداد فقط از همین خط یا حداکثر یک خط پایین‌تر
+            var combinedText = lineText + (lines[i+1] ? lines[i+1].text : "");
+            var digits = combinedText.replace(/[^0-9]/g, '');
+            
             if (digits.length >= 4) {
-              // ۳. بازسازی دستی اعشار: دو رقم آخر همیشه اعشار است
-              var val = parseFloat(digits.slice(0, -2) + "." + digits.slice(-2));
-              if (val > 10) found.push(val);
+              finalPrice = parseFloat(digits.slice(0, -2) + "." + digits.slice(-2));
+              break; // به محض پیدا کردن مبلغ اصلی، جستجو را متوقف کن
             }
           }
-        });
-
-        // ۴. اگر در خطوط کلیدی چیزی نبود، بزرگترین عدد کل متن را به همین روش امتحان کن
-        if (found.length === 0) {
-          var allDigits = res.data.text.match(/\d{4,}/g) || [];
-          allDigits.forEach(d => found.push(parseFloat(d.slice(0, -2) + "." + d.slice(-2))));
         }
 
-        // مرتب‌سازی و حذف تکراری‌ها
-        found = [...new Set(found)].sort((a, b) => b - a);
-        
-        // نمایش بزرگترین عدد پیدا شده به عنوان خروجی اصلی
-        S.ocrAmounts = found.length ? [found[0]] : [];
-        S.ocrStatus = found.length ? "Success: " + found[0] : "Try a clearer photo";
+        if (finalPrice) {
+          S.ocrAmounts = [finalPrice];
+          S.ocrStatus = "Total Found!";
+        } else {
+          // اگر کلمه کلیدی پیدا نشد، محتاطانه عمل کن و نویز نده
+          S.ocrStatus = "Could not find Total line.";
+        }
         R();
-      }).catch(function() { S.ocrStatus = "OCR Failed"; R(); });
+      }).catch(function() { S.ocrStatus = "Scan Failed"; R(); });
     };
     img.src = e.target.result;
   };
