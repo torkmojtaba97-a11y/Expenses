@@ -246,54 +246,60 @@ function setOB(v){S.openBal=num(v);localStorage.setItem("ex_openbal",S.openBal);
 // تابع اصلاح شده اسکن رسید
 function scanReceipt(input, target) {
   var file = input.files[0]; if (!file) return;
-  S.ocrStatus = "Optimizing image for dot-matrix..."; S.ocrAmounts = []; R();
+  S.ocrStatus = "Initializing engine..."; S.ocrAmounts = []; R();
+  
   var reader = new FileReader();
   reader.onload = function(e) {
     var img = new Image();
     img.onload = function() {
       var canvas = document.createElement("canvas");
       var ctx = canvas.getContext("2d");
-      var scale = 2; // بزرگنمایی بیشتر برای دقت بالا
+      
+      // کاهش مقیاس به 1.2 برای سرعت بیشتر (تعادل بین دقت و سرعت)
+      var scale = 1.2; 
       canvas.width = img.width * scale;
       canvas.height = img.height * scale;
       
-      // مرحله ۱: ضخیم‌سازی فونت (برای چسباندن نقاط به هم)
-      ctx.filter = 'contrast(200%) brightness(90%) grayscale(100%)';
-      // کشیدن تصویر با کمی جابجایی برای پر کردن فضاهای خالی بین نقطه‌ها
+      // فیلتر ساده‌تر و سریع‌تر
+      ctx.filter = 'contrast(150%) grayscale(100%)';
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      ctx.globalAlpha = 0.5;
-      ctx.drawImage(img, 1, 1, canvas.width, canvas.height); 
-      ctx.globalAlpha = 1.0;
+      
+      var processedImg = canvas.toDataURL("image/jpeg", 0.7);
+      S.ocrImg = processedImg; R();
 
-      S.ocrImg = canvas.toDataURL("image/jpeg", 0.9); R();
-      S.ocrStatus = "Reading totals..."; R();
-
-      // مرحله ۲: محدود کردن OCR فقط به اعداد و علائم پولی
-      Tesseract.recognize(S.ocrImg, 'eng', {
-        tessedit_char_whitelist: '0123456789.,', // فقط دنبال این کاراکترها بگرد
-        logger: m => {}
+      // اضافه کردن لاگر برای دیدن پیشرفت کار
+      Tesseract.recognize(processedImg, 'eng', {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            S.ocrStatus = "Reading: " + Math.round(m.progress * 100) + "%";
+            R();
+          }
+        }
       }).then(function(res) {
-        var txt = res.data.text;
-        // استخراج اعداد با الگوهای مختلف (با کاما یا بدون کاما)
-        var matches = txt.match(/\d+[\.,]\d{2}/g) || [];
+        var txt = res.data.text.toLowerCase();
+        // جستجوی عدد با فرمت 4,155.63 یا 4155.63
+        var matches = txt.match(/\d{1,3}(?:,\d{3})*(?:\.\d{2})/g) || [];
         var found = [];
         
-        for (var i = 0; i < matches.length; i++) {
-          var clean = matches[i].replace(/,/g, ""); // حذف کاما برای تبدیل به عدد
-          var val = parseFloat(clean);
+        matches.forEach(m => {
+          var val = parseFloat(m.replace(/,/g, ""));
           if (val > 10) found.push(val);
-        }
+        });
 
-        // اگر عددی پیدا نشد، تلاش مجدد با الگوی ساده‌تر
+        // اگر عددی پیدا نشد، بزرگترین عدد لیست را بردار
         if (found.length === 0) {
-          var altMatches = txt.match(/\d+/g) || [];
-          altMatches.forEach(m => { if(m.length > 2) found.push(parseFloat(m)); });
+          var allNums = txt.match(/\d+\.\d{2}/g) || [];
+          allNums.forEach(n => found.push(parseFloat(n)));
         }
 
         S.ocrAmounts = [...new Set(found)].sort((a, b) => b - a).slice(0, 3);
-        S.ocrStatus = S.ocrAmounts.length ? "Result found:" : "Hard to read. Enter manually.";
+        S.ocrStatus = S.ocrAmounts.length ? "Scan complete" : "Manual entry required";
         R();
-      }).catch(function() { S.ocrStatus = "Error."; R(); });
+      }).catch(function(err) {
+        console.error(err);
+        S.ocrStatus = "Engine error. Try again.";
+        R();
+      });
     };
     img.src = e.target.result;
   };
