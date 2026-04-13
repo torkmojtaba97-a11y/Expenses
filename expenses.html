@@ -195,16 +195,34 @@ function addDebt() {
         date: td()
     };
     S.pending.push(d);
-    localStorage.setItem("ex_pending", JSON.stringify(S.pending));
     S.debtForm = {person: "", amount: "", type: "owe_me", desc: ""};
     S.modal = null;
     R();
+    // ارسال به گوگل شیت
+    api({action:"add_debt", id:d.id, person:d.person, amount:d.amount, type:d.type, desc:d.desc, date:d.date}).catch(function(){});
 }
 
 function settleDebt(id) {
     var idx = S.pending.findIndex(function(x){ return x.id === id; });
     if(idx === -1) return;
     var d = S.pending[idx];
+    
+    // ۱. ارسال دستور حذف از لیست پندینگ در گوگل‌شیت
+    api({action:"delete_debt", id:id}).catch(function(){});
+
+    // ۲. انتقال به تراکنش‌های اصلی (درآمد یا هزینه)
+    if(d.type === 'owe_me') {
+        S.incForm = {amount: String(d.amount), cat: "other_inc", desc: "Settled: " + d.person, date: td()};
+        addInc();
+    } else {
+        S.form = {amount: String(d.amount), cat: "other", desc: "Settled: " + d.person, date: td()};
+        addExp();
+    }
+    
+    // ۳. حذف از لیست محلی گوشی برای بروزرسانی آنی ظاهر برنامه
+    S.pending.splice(idx, 1);
+    R();
+}
     
     // انتقال به تراکنش‌های اصلی
     if(d.type === 'owe_me') {
@@ -224,8 +242,8 @@ function settleDebt(id) {
 function delDebt(id) {
     if(!confirm("Delete this debt?")) return;
     S.pending = S.pending.filter(function(x){ return x.id !== id; });
-    localStorage.setItem("ex_pending", JSON.stringify(S.pending));
     R();
+    api({action:"delete_debt", id:id}).catch(function(){});
 }
 function cleanData(arr){
   for(var i=0;i<arr.length;i++){
