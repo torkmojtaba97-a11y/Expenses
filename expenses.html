@@ -479,7 +479,12 @@ button,input,select{font-family:'Nunito',sans-serif}
 .dc-btn:active{transform:scale(.97)}
 .dc-btn-pay{flex:2}
 .dc-btn-settle{flex:2;border-color:currentColor}
-.dc-btn-del{flex:0.6;color:var(--red)!important}
+.dc-apply-btn{
+  background:none;border:1px solid currentColor;border-radius:5px;
+  padding:2px 6px;font-size:9px;font-weight:700;
+  cursor:pointer;margin-left:4px;white-space:nowrap;
+}
+.dc-apply-btn:active{opacity:.7}
 
 /* ── HISTORY FILTERS ── */
 .chips{
@@ -1015,13 +1020,14 @@ function openPartialPay(id){
 }
 
 function addPartialPay(){
-  // read directly from DOM in case captureForm hasn't run yet
   var amtEl=document.querySelector('.inp-big');
   var noteEl=document.querySelector('.inp-sm[placeholder="Note (optional)"]');
   var dateEl=document.querySelector('input[type="date"]');
+  var applyEl=document.getElementById('apply-toggle');
   if(amtEl&&amtEl.value)S.partialForm.amount=amtEl.value;
   if(noteEl)S.partialForm.note=noteEl.value;
   if(dateEl)S.partialForm.date=dateEl.value;
+  if(applyEl)S.partialForm.applyNow=applyEl.checked;
 
   var f=S.partialForm;
   if(!f.amount)return;
@@ -1031,14 +1037,52 @@ function addPartialPay(){
   var paid=num(f.amount);
   if(paid<=0)return;
   if(paid>d.remaining)paid=d.remaining;
+
+  var payEntry={amount:paid,date:f.date||td(),note:f.note||"",applied:false};
+
+  // apply to main balance immediately if toggled
+  if(f.applyNow){
+    payEntry.applied=true;
+    if(d.type==="owe_me"){
+      var e1={id:uid(),amount:paid,category:"other_inc",desc:"Payment from "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"income"};
+      S.data.push(e1);
+      api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"income"}).catch(function(){});
+    }else{
+      var e2={id:uid(),amount:paid,category:"other",desc:"Payment to "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"expense"};
+      S.data.push(e2);
+      api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"expense"}).catch(function(){});
+    }
+  }
+
   d.payments=d.payments||[];
-  d.payments.push({amount:paid,date:f.date||td(),note:f.note||""});
+  d.payments.push(payEntry);
   d.remaining=Math.max(0,d.remaining-paid);
   localStorage.setItem("ex_pending",JSON.stringify(S.pending));
   S.modal=null;
-  S.partialForm={id:"",amount:"",note:"",date:td()};
+  S.partialForm={id:"",amount:"",note:"",date:td(),applyNow:false};
   R();
-  toast("Payment of "+fmt(paid)+" recorded ✓");
+  toast(f.applyNow ? fmt(paid)+" added to balance ✓" : "Payment of "+fmt(paid)+" recorded");
+}
+
+// apply a single recorded payment to main balance retroactively
+function applyPayment(debtId,pIdx){
+  var didx=S.pending.findIndex(function(x){return x.id===debtId;});
+  if(didx===-1)return;
+  var d=S.pending[didx];
+  var p=d.payments[pIdx];
+  if(!p||p.applied)return;
+  p.applied=true;
+  if(d.type==="owe_me"){
+    var e1={id:uid(),amount:p.amount,category:"other_inc",desc:"Payment from "+d.person+(p.note?" · "+p.note:""),date:p.date,ts:Date.now(),type:"income"};
+    S.data.push(e1);
+    api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"income"}).catch(function(){});
+  }else{
+    var e2={id:uid(),amount:p.amount,category:"other",desc:"Payment to "+d.person+(p.note?" · "+p.note:""),date:p.date,ts:Date.now(),type:"expense"};
+    S.data.push(e2);
+    api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"expense"}).catch(function(){});
+  }
+  localStorage.setItem("ex_pending",JSON.stringify(S.pending));
+  R();toast(fmt(p.amount)+" applied to balance ✓");
 }
 
 function settleDebt(id){
@@ -1046,17 +1090,30 @@ function settleDebt(id){
   if(idx===-1)return;
   var d=S.pending[idx];
   var remaining=num(d.remaining!==undefined?d.remaining:d.amount);
-  if(!confirm("Mark as fully settled?\n\nRemaining: "+fmt(remaining)+"\n\nThis will add it to your main transactions."))return;
-  if(d.type==="owe_me"){
-    S.incForm={amount:String(remaining),cat:"other_inc",desc:"Settled: "+d.person,date:td()};
-    addInc();
-  }else{
-    S.form={amount:String(remaining),cat:"other",desc:"Settled: "+d.person,date:td()};
-    addExp();
+  // calculate how much has already been applied to balance
+  var alreadyApplied=0;
+  (d.payments||[]).forEach(function(p){if(p.applied)alreadyApplied+=num(p.amount);});
+  var toApply=remaining; // remaining already excludes all payments (applied or not)
+
+  var msg="Mark as fully settled?\n\n";
+  if(alreadyApplied>0)msg+="Already in balance: "+fmt(alreadyApplied)+"\n";
+  msg+="Will add to balance now: "+fmt(toApply);
+  if(!confirm(msg))return;
+
+  if(toApply>0){
+    if(d.type==="owe_me"){
+      var e1={id:uid(),amount:toApply,category:"other_inc",desc:"Settled: "+d.person,date:td(),ts:Date.now(),type:"income"};
+      S.data.push(e1);
+      api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"income"}).catch(function(){});
+    }else{
+      var e2={id:uid(),amount:toApply,category:"other",desc:"Settled: "+d.person,date:td(),ts:Date.now(),type:"expense"};
+      S.data.push(e2);
+      api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"expense"}).catch(function(){});
+    }
   }
   S.pending.splice(idx,1);
   localStorage.setItem("ex_pending",JSON.stringify(S.pending));
-  R();toast("Debt settled ✓");
+  S.modal=null;R();toast("Debt settled ✓");
 }
 
 function delDebt(id){
@@ -1364,12 +1421,16 @@ function doRender(){
       // payment history
       if(payments.length){
         card+='<div class="dc-history">';
-        payments.forEach(function(p){
+        payments.forEach(function(p,pi){
           card+='<div class="dc-pay-row">'+
-            '<span class="dc-pay-dot" style="background:'+(isCredit?"var(--green)":"var(--red)")+'"></span>'+
+            '<span class="dc-pay-dot" style="background:'+(p.applied?(isCredit?"var(--green)":"var(--red)"):"var(--txt3)")+'"></span>'+
             '<span class="dc-pay-date">'+p.date+'</span>'+
-            (p.note?'<span class="dc-pay-note">'+p.note+'</span>':'')+
+            (p.note?'<span class="dc-pay-note">'+p.note+'</span>':'<span class="dc-pay-note"></span>')+
             '<span class="dc-pay-amt">'+fmt(p.amount)+'</span>'+
+            (p.applied
+              ? '<span style="font-size:9px;color:var(--txt3);margin-left:4px;white-space:nowrap">✓ applied</span>'
+              : '<button class="dc-apply-btn" style="color:'+(isCredit?"var(--green)":"var(--red)")+'" onclick="applyPayment(\''+d.id+'\','+pi+')">'+(isCredit?"→ Income":"→ Expense")+'</button>'
+            )+
             '</div>';
         });
         card+='</div>';
@@ -1584,18 +1645,25 @@ function doRender(){
       md='<div class="md-h"><h3>Record Payment</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>';
       if(pd){
         md+='<div style="background:var(--bg3);border-radius:12px;padding:12px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">'+
-          '<div><div style="font-size:11px;color:var(--txt3)">Remaining balance</div><div style="font-family:\'Space Grotesk\',sans-serif;font-size:22px;font-weight:800;color:'+(isCredit?"var(--green)":"var(--red)")+'">'+fmt(pdRemaining)+'</div></div>'+
-          '<div style="font-size:13px;font-weight:600">'+pd.person+'</div>'+
-          '</div>';
+          '<div><div style="font-size:11px;color:var(--txt3)">Remaining balance</div>'+
+          '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:22px;font-weight:800;color:'+(isCredit?"var(--green)":"var(--red)")+'">'+fmt(pdRemaining)+'</div></div>'+
+          '<div style="font-size:13px;font-weight:600">'+pd.person+'</div></div>';
       }
       md+='<label class="lb">Amount paid</label>'+
         '<input class="inp-big" type="number" inputmode="decimal" placeholder="0.00" value="'+S.partialForm.amount+'">'+
         '<label class="lb">Date</label>'+
         '<input class="inp-sm" type="date" value="'+S.partialForm.date+'" onchange="S.partialForm.date=this.value">'+
         '<label class="lb">Note (optional)</label>'+
-        '<input class="inp-sm" type="text" placeholder="Note (optional)" value="'+S.partialForm.note+'">'+
-        '<div style="font-size:10px;color:var(--txt3);margin-top:8px;padding:8px;background:var(--bg3);border-radius:8px">'+
-        '⚠️ This only records the payment. The debt stays pending until you tap <b>Settle</b>.</div>'+
+        '<input class="inp-sm" type="text" placeholder="Note (optional)" value="'+S.partialForm.note+'">';
+
+      // apply toggle
+      var toggleColor=isCredit?"var(--green)":"var(--red)";
+      var toggleLabel=isCredit?"Add to my income (main balance)":"Deduct from my expenses (main balance)";
+      md+='<label style="display:flex;align-items:center;gap:10px;background:var(--bg3);border-radius:12px;padding:13px 14px;margin-top:12px;cursor:pointer">'+
+        '<input type="checkbox" id="apply-toggle" style="width:18px;height:18px;accent-color:'+toggleColor+';cursor:pointer" '+(S.partialForm.applyNow?"checked":"")+' onchange="S.partialForm.applyNow=this.checked">'+
+        '<div><div style="font-size:13px;font-weight:600;color:'+toggleColor+'">'+toggleLabel+'</div>'+
+        '<div style="font-size:10px;color:var(--txt3);margin-top:2px">اگه تیک بزنی الان به حساب اصلیت اعمال میشه</div></div>'+
+        '</label>'+
         '<button class="btn '+(isCredit?"btn-i":"btn-e")+'" onclick="addPartialPay()">Save Payment</button>';
     }
     // ── Edit Modal ──
