@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
@@ -248,159 +248,94 @@ function setOB(v){S.openBal=num(v);localStorage.setItem("ex_openbal",S.openBal);
 // تابع اصلاح شده اسکن رسید
 let cropper;
 
+// Main scan function
 function scanReceipt(input) {
+  if (!input.files || !input.files[0]) return;
   const file = input.files[0];
-  if (!file) return;
 
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = function(e) {
+    // Create UI Modal
     const modal = document.createElement('div');
     modal.id = "ocr-modal";
-    // Fixed positioning with explicit high z-index and flex layout
-    modal.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:#000;z-index:999999;display:flex;flex-direction:column;font-family:sans-serif;";
+    // Strong CSS for cross-browser support
+    modal.setAttribute('style', 'position:fixed;top:0;left:0;width:100%;height:100%;background:#000;z-index:999999;display:flex;flex-direction:column;font-family:Arial,sans-serif;');
     
     modal.innerHTML = `
-      <div style="background:#1a1a1a;padding:15px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #333;">
-        <button id="ocr-cancel" style="color:#ff4444;background:none;border:none;font-size:16px;cursor:pointer;">Cancel</button>
-        <span style="color:#fff;font-weight:bold;">Crop Total Amount</span>
-        <button id="ocr-confirm" style="color:#007bff;background:none;border:none;font-size:16px;font-weight:bold;cursor:pointer;">Done</button>
+      <div style="background:#1a1a1a;padding:15px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #333;color:#fff;">
+        <button id="ocr-cancel" style="color:#ff4444;background:transparent;border:none;font-size:16px;padding:10px;">Cancel</button>
+        <span style="font-size:14px;">Crop Amount Only</span>
+        <button id="ocr-done" style="color:#007bff;background:transparent;border:none;font-size:16px;font-weight:bold;padding:10px;">Done</button>
       </div>
-      <div style="flex:1;position:relative;background:#000;overflow:hidden;">
-        <img id="crop-target" src="${e.target.result}" style="display:block;max-width:100%;">
+      <div style="flex:1;position:relative;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+        <img id="crop-target" src="${e.target.result}" style="max-width:100%;max-height:100%;">
       </div>
     `;
     document.body.appendChild(modal);
 
-    const targetImg = document.getElementById('crop-target');
-    cropper = new Cropper(targetImg, {
+    const image = document.getElementById('crop-target');
+    cropper = new Cropper(image, {
       viewMode: 1,
       dragMode: 'move',
-      autoCropArea: 0.7,
+      autoCropArea: 0.6,
       responsive: true,
       checkOrientation: true,
+      modal: true,
+      guides: true
     });
 
-    document.getElementById('ocr-confirm').onclick = () => {
+    document.getElementById('ocr-done').onclick = function() {
+      // Get cropped image with high quality
       const canvas = cropper.getCroppedCanvas({ width: 1200 });
-      const ctx = canvas.getContext('2d');
-      
-      // Clean up background for better OCR
-      ctx.globalCompositeOperation = 'destination-over';
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
       const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-      closeModal();
-      processOcr(dataUrl);
+      
+      closeOcrModal();
+      startOcrEngine(dataUrl);
     };
 
-    document.getElementById('ocr-cancel').onclick = closeModal;
+    document.getElementById('ocr-cancel').onclick = closeOcrModal;
   };
   reader.readAsDataURL(file);
 }
 
-function closeModal() {
+function closeOcrModal() {
   if (cropper) {
     cropper.destroy();
     const m = document.getElementById('ocr-modal');
-    if (m) m.remove();
+    if (m) m.parentNode.removeChild(m);
   }
 }
 
-function processOcr(base64) {
-  S.ocrStatus = "Scanning..."; S.ocrAmounts = []; R();
+function startOcrEngine(base64) {
+  S.ocrStatus = "Processing..."; S.ocrAmounts = []; R();
 
   Tesseract.recognize(base64, 'eng', {
+    // ONLY look for digits to avoid misreading noise as '1' or '.'
     tessedit_char_whitelist: '0123456789',
-    logger: m => { if(m.status === 'recognizing text') { S.ocrStatus = "Reading: " + Math.round(m.progress * 100) + "%"; R(); } }
-  }).then(res => {
-    // Remove all non-digits
-    let digits = res.data.text.replace(/[^0-9]/g, '');
-    
-    if (digits.length >= 3) {
-      // Force 2 decimal places: e.g. 1274575 -> 12745.75
-      let finalAmount = parseFloat(digits.slice(0, -2) + "." + digits.slice(-2));
-      
-      S.ocrAmounts = [finalAmount];
-      S.ocrStatus = "Found: " + finalAmount;
-    } else {
-      S.ocrStatus = "Error: Crop closer to the numbers";
-    }
-    R();
-  }).catch(() => { S.ocrStatus = "Error"; R(); });
-}
-function closeModal() {
-  if (cropper) {
-    cropper.destroy();
-    const m = document.getElementById('ocr-modal');
-    if (m) m.remove();
-  }
-}
-
-function processOcr(base64) {
-  S.ocrStatus = "Reading..."; S.ocrAmounts = []; R();
-
-  Tesseract.recognize(base64, 'eng', {
-    tessedit_char_whitelist: '0123456789', // Ignore dots, commas, and currency
-    logger: m => { if(m.status === 'recognizing text') { S.ocrStatus = "Progress: " + Math.round(m.progress * 100) + "%"; R(); } }
-  }).then(res => {
-
-function cleanupCrop() {
-  if (cropper) {
-    cropper.destroy();
-    const modal = document.getElementById('crop-modal');
-    if (modal) modal.remove();
-  }
-}
-
-function processOcr(imgSource) {
-  S.ocrStatus = "Reading Data..."; S.ocrAmounts = []; R();
-
-  Tesseract.recognize(imgSource, 'eng', {
-    tessedit_char_whitelist: '0123456789', // Ignore noise, dots, and commas
-    logger: m => { 
+    logger: function(m) { 
       if(m.status === 'recognizing text') { 
         S.ocrStatus = "Progress: " + Math.round(m.progress * 100) + "%"; R(); 
       } 
     }
-  }).then(res => {
-    // Extract only digits from the cropped area
-    const rawDigits = res.data.text.replace(/[^0-9]/g, '');
+  }).then(function(res) {
+    // Extract numbers only
+    let digits = res.data.text.replace(/[^0-9]/g, '');
     
-    if (rawDigits.length >= 4) {
-      // Logic: Last two digits are always decimals
-      const finalVal = parseFloat(rawDigits.slice(0, -2) + "." + rawDigits.slice(-2));
-      S.ocrAmounts = [finalVal];
-      S.ocrStatus = "Success";
+    if (digits.length >= 3) {
+      // Logic: 1274575 becomes 12745.75
+      const amount = parseFloat(digits.slice(0, -2) + "." + digits.slice(-2));
+      S.ocrAmounts = [amount];
+      S.ocrStatus = "Success: " + amount;
     } else {
-      S.ocrStatus = "Error: Text too blurry";
+      S.ocrStatus = "Error: Crop tighter";
     }
     R();
-  }).catch(err => {
-    S.ocrStatus = "OCR Failed";
+  }).catch(function() {
+    S.ocrStatus = "Scan Failed";
     R();
   });
 }
 
-function processOcr(base64Img) {
-  S.ocrStatus = "Scanning Crop..."; S.ocrAmounts = []; R();
-  
-  Tesseract.recognize(base64Img, 'eng', {
-    tessedit_char_whitelist: '0123456789',
-    logger: m => { if(m.status === 'recognizing text') { S.ocrStatus = "Reading: " + Math.round(m.progress * 100) + "%"; R(); } }
-  }).then(res => {
-    const digits = res.data.text.replace(/[^0-9]/g, '');
-    if (digits.length >= 4) {
-      // از آنجایی که کاربر فقط روی مبلغ کراپ کرده، اولین عدد طولانی کل مبلغ است
-      const val = parseFloat(digits.slice(0, -2) + "." + digits.slice(-2));
-      S.ocrAmounts = [val];
-      S.ocrStatus = "Success!";
-    } else {
-      S.ocrStatus = "Could not read digits. Try again.";
-    }
-    R();
-  }).catch(() => { S.ocrStatus = "Error"; R(); });
-}
 function pickOcr(val,target){
   if(target==="expense")S.form.amount=String(val);
   else S.incForm.amount=String(val);R();
@@ -668,7 +603,6 @@ function setMd(){
 
 setInterval(function(){if(S.connected)load();},30000);
 R();
-
 </script>
 </body>
 </html>
