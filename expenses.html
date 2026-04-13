@@ -244,10 +244,10 @@ function delEnt(id){S.data=S.data.filter(function(e){return e.id!==id;});S.modal
 function setOB(v){S.openBal=num(v);localStorage.setItem("ex_openbal",S.openBal);R();}
 
 // تابع اصلاح شده اسکن رسید
-function scanReceipt(input) {
+function scanReceipt(input){
 
   var file = input.files[0];
-  if (!file) return;
+  if(!file) return;
 
   S.ocrStatus = "Scanning receipt...";
   S.ocrAmounts = [];
@@ -255,69 +255,101 @@ function scanReceipt(input) {
 
   var reader = new FileReader();
 
-  reader.onload = function(ev) {
+  reader.onload = function(e){
 
-    Tesseract.recognize(ev.target.result,'eng').then(function(result){
+    var img = new Image();
 
-      var txt = result.data.text.toLowerCase();
-      var lines = txt.split('\n');
+    img.onload = function(){
 
-      var found = [];
+      var canvas = document.createElement("canvas");
+      var ctx = canvas.getContext("2d");
 
-      for (var i=0;i<lines.length;i++){
+      canvas.width = img.width;
+      canvas.height = img.height;
 
-        var line = lines[i];
+      ctx.drawImage(img,0,0);
 
-        if(
-          line.includes("total") ||
-          line.includes("amount due") ||
-          line.includes("net total") ||
-          line.includes("grand total")
-        ){
+      var imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
+      var d = imgData.data;
 
-          // عدد در همان خط
-          var m = line.match(/[\d,]+\.\d{2}/);
-          if(m){
-            found.push(parseFloat(m[0].replace(/,/g,'')));
-          }
+      // grayscale + contrast
+      for(var i=0;i<d.length;i+=4){
 
-          // عدد در خط بعدی
-          if(i+1 < lines.length){
+        var gray = 0.3*d[i] + 0.59*d[i+1] + 0.11*d[i+2];
 
-            var m2 = lines[i+1].match(/[\d,]+\.\d{2}/);
+        var v = gray > 160 ? 255 : 0;
 
-            if(m2){
-              found.push(parseFloat(m2[0].replace(/,/g,'')));
+        d[i] = d[i+1] = d[i+2] = v;
+      }
+
+      ctx.putImageData(imgData,0,0);
+
+      var processed = canvas.toDataURL("image/png");
+
+      Tesseract.recognize(processed,'eng',{logger:m=>{}})
+      .then(function(res){
+
+        var txt = res.data.text.toLowerCase();
+        var lines = txt.split("\n");
+
+        var found=[];
+
+        for(var i=0;i<lines.length;i++){
+
+          var line = lines[i];
+
+          if(
+            line.includes("total") ||
+            line.includes("grand total") ||
+            line.includes("amount due") ||
+            line.includes("net total")
+          ){
+
+            var m=line.match(/[\d,.]+/);
+
+            if(m){
+              found.push(parseFloat(m[0].replace(/,/g,'')));
+            }
+
+            if(i+1<lines.length){
+
+              var m2=lines[i+1].match(/[\d,.]+/);
+
+              if(m2){
+                found.push(parseFloat(m2[0].replace(/,/g,'')));
+              }
+
             }
 
           }
 
         }
 
-      }
+        // fallback → biggest number
+        if(found.length===0){
 
-      // fallback → بزرگترین عدد
-      if(found.length===0){
+          var nums=(txt.match(/[\d]+\.[\d]{2}/g)||[])
+          .map(x=>parseFloat(x));
 
-        var matches = txt.match(/[\d,]+\.\d{2}/g) || [];
+          if(nums.length){
+            found.push(Math.max(...nums));
+          }
 
-        var nums = matches.map(x=>parseFloat(x.replace(/,/g,'')));
-
-        if(nums.length){
-          found.push(Math.max(...nums));
         }
 
-      }
+        S.ocrAmounts=[...new Set(found)].slice(0,3);
 
-      S.ocrAmounts = [...new Set(found)].slice(0,3);
+        S.ocrStatus=S.ocrAmounts.length
+          ? "Total detected — tap to use"
+          : "Could not detect total";
 
-      S.ocrStatus = S.ocrAmounts.length
-        ? "Total detected — tap to use"
-        : "Could not detect total";
+        R();
 
-      R();
+      });
 
-    });
+    };
+
+    img.src=e.target.result;
 
   };
 
@@ -591,85 +623,7 @@ function setMd(){
 
 setInterval(function(){if(S.connected)load();},30000);
 R();
-  function scanReceipt(input){
 
-  var file = input.files[0];
-  if(!file) return;
-
-  S.ocrStatus = "Scanning receipt...";
-  S.ocrAmounts = [];
-  R();
-
-  var reader = new FileReader();
-
-  reader.onload = function(e){
-
-    Tesseract.recognize(e.target.result,'eng')
-    .then(function(res){
-
-      var txt = res.data.text.toLowerCase();
-      var lines = txt.split('\n');
-
-      var found=[];
-
-      for(var i=0;i<lines.length;i++){
-
-        var line = lines[i];
-
-        if(
-          line.includes("total") ||
-          line.includes("amount due") ||
-          line.includes("grand total") ||
-          line.includes("net total")
-        ){
-
-          var m = line.match(/[\d,]+\.\d{2}/);
-
-          if(m){
-            found.push(parseFloat(m[0].replace(/,/g,'')));
-          }
-
-          if(i+1 < lines.length){
-
-            var m2 = lines[i+1].match(/[\d,]+\.\d{2}/);
-
-            if(m2){
-              found.push(parseFloat(m2[0].replace(/,/g,'')));
-            }
-
-          }
-
-        }
-
-      }
-
-      if(found.length===0){
-
-        var matches = txt.match(/[\d,]+\.\d{2}/g) || [];
-
-        var nums = matches.map(x=>parseFloat(x.replace(/,/g,'')));
-
-        if(nums.length){
-          found.push(Math.max(...nums));
-        }
-
-      }
-
-      S.ocrAmounts = [...new Set(found)].slice(0,3);
-
-      S.ocrStatus = S.ocrAmounts.length
-        ? "Total detected — tap to use"
-        : "Could not detect total";
-
-      R();
-
-    });
-
-  };
-
-  reader.readAsDataURL(file);
-
-}
 </script>
 </body>
 </html>
