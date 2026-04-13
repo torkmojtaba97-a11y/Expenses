@@ -591,6 +591,85 @@ function setMd(){
 
 setInterval(function(){if(S.connected)load();},30000);
 R();
+  function scanReceipt(input){
+
+  var file = input.files[0];
+  if(!file) return;
+
+  S.ocrStatus = "Scanning receipt...";
+  S.ocrAmounts = [];
+  R();
+
+  var reader = new FileReader();
+
+  reader.onload = function(e){
+
+    Tesseract.recognize(e.target.result,'eng')
+    .then(function(res){
+
+      var txt = res.data.text.toLowerCase();
+      var lines = txt.split('\n');
+
+      var found=[];
+
+      for(var i=0;i<lines.length;i++){
+
+        var line = lines[i];
+
+        if(
+          line.includes("total") ||
+          line.includes("amount due") ||
+          line.includes("grand total") ||
+          line.includes("net total")
+        ){
+
+          var m = line.match(/[\d,]+\.\d{2}/);
+
+          if(m){
+            found.push(parseFloat(m[0].replace(/,/g,'')));
+          }
+
+          if(i+1 < lines.length){
+
+            var m2 = lines[i+1].match(/[\d,]+\.\d{2}/);
+
+            if(m2){
+              found.push(parseFloat(m2[0].replace(/,/g,'')));
+            }
+
+          }
+
+        }
+
+      }
+
+      if(found.length===0){
+
+        var matches = txt.match(/[\d,]+\.\d{2}/g) || [];
+
+        var nums = matches.map(x=>parseFloat(x.replace(/,/g,'')));
+
+        if(nums.length){
+          found.push(Math.max(...nums));
+        }
+
+      }
+
+      S.ocrAmounts = [...new Set(found)].slice(0,3);
+
+      S.ocrStatus = S.ocrAmounts.length
+        ? "Total detected — tap to use"
+        : "Could not detect total";
+
+      R();
+
+    });
+
+  };
+
+  reader.readAsDataURL(file);
+
+}
 </script>
 </body>
 </html>
