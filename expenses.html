@@ -246,40 +246,46 @@ function setOB(v){S.openBal=num(v);localStorage.setItem("ex_openbal",S.openBal);
 // تابع اصلاح شده اسکن رسید
 function scanReceipt(input, target) {
   var file = input.files[0]; if (!file) return;
-  S.ocrStatus = "Scanning for Total Amount..."; S.ocrAmounts = []; R();
+  S.ocrStatus = "Searching for Total..."; S.ocrAmounts = []; R();
   var reader = new FileReader();
   reader.onload = function(ev) {
     S.ocrImg = ev.target.result; R();
     Tesseract.recognize(ev.target.result, 'eng').then(function(result) {
       var txt = result.data.text;
-      var lines = txt.split('\n');
-      var foundNums = [];
-      
-      // ۱. جستجوی دقیق برای عبارت‌های رایج در رسیدهای فیلیپین مثل Amount Due یا Total Amount
+      // جدا کردن کلمات برای بررسی دقیق‌تر
+      var lines = txt.toLowerCase().split('\n');
+      var candidates = [];
+
+      // ۱. جستجوی خط به خط برای پیدا کردن مبلغ نهایی
       for (var i = 0; i < lines.length; i++) {
-        var line = lines[i].toLowerCase();
-        if (line.includes("amount due") || line.includes("total amount") || line.includes("net total")) {
-          // استخراج عدد اعشاری از همان خط
+        var line = lines[i];
+        // کلمات کلیدی که در رسید شما هست: "amount due", "total"
+        if (line.includes("amount") || line.includes("due") || line.includes("total") || line.includes("net")) {
           var match = line.match(/\d+[\.,]\d{2}/);
-          if (match) foundNums.push(num(match[0].replace(/,/g, "")));
+          if (match) candidates.push(num(match[0].replace(/,/g, "")));
         }
       }
 
-      // ۲. اگر در خطوط کلیدی چیزی نبود، بزرگترین عدد رسید را به عنوان احتمال دوم در نظر بگیر
-      if (foundNums.length === 0) {
-        var allMatches = txt.match(/\d+[\.,]\d{2}/g) || [];
-        var allNums = allMatches.map(m => num(m.replace(/,/g, "")));
-        if (allNums.length > 0) {
-          foundNums.push(Math.max(...allNums));
-        }
+      // ۲. اگر با کلمات کلیدی پیدا نشد، تمام اعداد اعشاری را استخراج کن
+      var allMatches = txt.match(/\d+[\.,]\d{2}/g) || [];
+      var allNums = allMatches.map(m => num(m.replace(/,/g, ""))).filter(n => n > 10);
+
+      if (allNums.length > 0) {
+        // بزرگترین عدد معمولاً مبلغ کل است
+        candidates.push(Math.max(...allNums));
       }
 
-      // حذف تکراری‌ها و نمایش فقط ۳ گزینه محتمل
-      S.ocrAmounts = [...new Set(foundNums)].filter(n => n > 1).slice(0, 3);
-      S.ocrStatus = S.ocrAmounts.length ? "Total found - Tap to use:" : "Could not find Total. Enter manually.";
+      // مرتب‌سازی و حذف تکراری‌ها
+      S.ocrAmounts = [...new Set(candidates)].sort((a, b) => b - a).slice(0, 3);
+      
+      if (S.ocrAmounts.length > 0) {
+        S.ocrStatus = "Is the total " + fmt(S.ocrAmounts[0]) + "?";
+      } else {
+        S.ocrStatus = "No total found. Please enter manually.";
+      }
       R();
-    }).catch(function() { 
-      S.ocrStatus = "Error processing image."; 
+    }).catch(function(err) { 
+      S.ocrStatus = "Scan error. Try again."; 
       R(); 
     });
   };
