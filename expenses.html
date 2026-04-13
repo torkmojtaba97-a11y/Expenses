@@ -246,50 +246,54 @@ function setOB(v){S.openBal=num(v);localStorage.setItem("ex_openbal",S.openBal);
 // تابع اصلاح شده اسکن رسید
 function scanReceipt(input) {
   var file = input.files[0]; if (!file) return;
-  S.ocrStatus = "Searching for Total..."; S.ocrAmounts = []; R();
+  S.ocrStatus = "Targeting Total..."; S.ocrAmounts = []; R();
   
   var reader = new FileReader();
   reader.onload = function(e) {
     var img = new Image();
     img.onload = function() {
       var canvas = document.createElement("canvas");
-      canvas.width = 600; 
-      canvas.height = img.height * (600 / img.width);
+      // افزایش عرض به 800 برای دقت بیشتر در فونت‌های ریز
+      canvas.width = 800; 
+      canvas.height = img.height * (800 / img.width);
       var ctx = canvas.getContext("2d");
       
-      // فیلتر پیشرفته برای پررنگ کردن متن‌های کمرنگ رسید
-      ctx.filter = 'grayscale(100%) contrast(300%) brightness(100%)';
+      // فیلتر اختصاصی برای فونت‌های محو رسیدهای حرارتی
+      ctx.filter = 'grayscale(100%) contrast(350%) brightness(100%)';
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       
-      Tesseract.recognize(canvas.toDataURL("image/jpeg", 0.7), 'eng').then(function(res) {
+      Tesseract.recognize(canvas.toDataURL("image/jpeg", 0.8), 'eng').then(function(res) {
         var lines = res.data.lines;
         var found = [];
 
         lines.forEach(line => {
-          var str = line.text.toLowerCase();
-          // فقط اگر کلمات مربوط به پرداخت در این خط بود
-          if (str.includes("total") || str.includes("due") || str.includes("amount") || str.includes("php")) {
-            var numOnly = str.replace(/[^0-9]/g, '');
-            if (numOnly.length >= 4) {
-              var val = parseFloat(numOnly.slice(0, -2) + "." + numOnly.slice(-2));
+          var text = line.text.toLowerCase();
+          // ۱. فقط خطوطی که شامل کلمات کلیدی مربوط به مبلغ نهایی هستند
+          if (text.includes("due") || text.includes("total") || text.includes("amount") || text.includes("pay")) {
+            // ۲. حذف تمام کاراکترهای غیر عددی حتی نقطه و کاما (برای جلوگیری از خطای ۴.۱۹۵)
+            var digits = text.replace(/[^0-9]/g, '');
+            if (digits.length >= 4) {
+              // ۳. بازسازی دستی اعشار: دو رقم آخر همیشه اعشار است
+              var val = parseFloat(digits.slice(0, -2) + "." + digits.slice(-2));
               if (val > 10) found.push(val);
             }
           }
         });
 
-        // اگر با کلمات کلیدی پیدا نشد، بزرگترین عدد کل رسید را بگیر
+        // ۴. اگر در خطوط کلیدی چیزی نبود، بزرگترین عدد کل متن را به همین روش امتحان کن
         if (found.length === 0) {
-          var allNums = res.data.text.replace(/[^0-9\n]/g, '').split('\n');
-          allNums.forEach(n => {
-            if (n.length >= 4) found.push(parseFloat(n.slice(0, -2) + "." + n.slice(-2)));
-          });
+          var allDigits = res.data.text.match(/\d{4,}/g) || [];
+          allDigits.forEach(d => found.push(parseFloat(d.slice(0, -2) + "." + d.slice(-2))));
         }
 
+        // مرتب‌سازی و حذف تکراری‌ها
         found = [...new Set(found)].sort((a, b) => b - a);
+        
+        // نمایش بزرگترین عدد پیدا شده به عنوان خروجی اصلی
         S.ocrAmounts = found.length ? [found[0]] : [];
-        S.ocrStatus = found.length ? "Amount Detected" : "Could not read. Try closer photo.";
+        S.ocrStatus = found.length ? "Success: " + found[0] : "Try a clearer photo";
         R();
-      }).catch(function() { S.ocrStatus = "Error"; R(); });
+      }).catch(function() { S.ocrStatus = "OCR Failed"; R(); });
     };
     img.src = e.target.result;
   };
