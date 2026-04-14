@@ -842,6 +842,7 @@ var S={
   incForm:{amount:"",cat:"salary",desc:"",date:td()},
   editForm:{},
   debtForm:{person:"",amount:"",type:"owe_me",desc:""},
+  editDebtForm:{},
   status:"",
   syncing:false,
   search:"",
@@ -896,7 +897,6 @@ function api(p){
 function syncResponse(r){
   if(r.ok){
     S.data=cleanData(r.data||[]);
-    // always replace pending with server data (server is source of truth)
     if(Array.isArray(r.pending)){
       S.pending=r.pending.map(function(d){
         d.amount=num(d.amount);
@@ -934,10 +934,8 @@ function conn(){
 //  CRUD
 // ─────────────────────────────────────────
 function addExp(){
-  var amtEl=document.querySelector('.inp-big');
-  var descEl=document.querySelector('.inp-sm[type="text"]');
+  var amtEl=document.querySelector('.md input[type="number"].inp-big');
   if(amtEl&&amtEl.value)S.form.amount=amtEl.value;
-  if(descEl)S.form.desc=descEl.value;
   if(!S.form.amount)return;
   var e={id:uid(),amount:num(S.form.amount),category:S.form.cat,desc:S.form.desc,date:S.form.date,ts:Date.now(),type:"expense"};
   S.data.push(e);
@@ -947,10 +945,8 @@ function addExp(){
   api({action:"add",id:e.id,amount:e.amount,category:e.category,desc:e.desc,date:e.date,type:"expense"}).catch(function(){});
 }
 function addInc(){
-  var amtEl=document.querySelector('.inp-big');
-  var descEl=document.querySelector('.inp-sm[type="text"]');
+  var amtEl=document.querySelector('.md input[type="number"].inp-big');
   if(amtEl&&amtEl.value)S.incForm.amount=amtEl.value;
-  if(descEl)S.incForm.desc=descEl.value;
   if(!S.incForm.amount)return;
   var e={id:uid(),amount:num(S.incForm.amount),category:S.incForm.cat,desc:S.incForm.desc,date:S.incForm.date,ts:Date.now(),type:"income"};
   S.data.push(e);
@@ -993,12 +989,8 @@ function setOB(v){S.openBal=num(v);localStorage.setItem("ex_openbal",S.openBal);
 //  DEBTS
 // ─────────────────────────────────────────
 function addDebt(){
-  var amtEl=document.querySelector('.inp-big');
-  var personEl=document.querySelector('.inp-sm[placeholder="Name"]');
-  var noteEl=document.querySelector('.inp-sm[placeholder="What for?"]');
+  var amtEl=document.querySelector('.md input[type="number"].inp-big');
   if(amtEl&&amtEl.value)S.debtForm.amount=amtEl.value;
-  if(personEl)S.debtForm.person=personEl.value;
-  if(noteEl)S.debtForm.desc=noteEl.value;
   if(!S.debtForm.amount||!S.debtForm.person)return;
   var orig=num(S.debtForm.amount);
   var d={id:uid(),person:S.debtForm.person,amount:orig,remaining:orig,type:S.debtForm.type,desc:S.debtForm.desc,date:td(),payments:[]};
@@ -1006,7 +998,6 @@ function addDebt(){
   localStorage.setItem("ex_pending",JSON.stringify(S.pending));
   S.debtForm={person:"",amount:"",type:"owe_me",desc:""};
   S.modal=null;R();toast("Debt logged ✓");
-  // sync to Sheets so other devices see it
   api({action:"add_debt",id:d.id,person:d.person,amount:d.amount,type:d.type,desc:d.desc,date:d.date,remaining:d.remaining,payments:"[]"}).catch(function(){});
 }
 
@@ -1016,15 +1007,8 @@ function openPartialPay(id){
 }
 
 function addPartialPay(){
-  var amtEl=document.querySelector('.inp-big');
-  var noteEl=document.querySelector('.inp-sm[placeholder="Note (optional)"]');
-  var dateEl=document.querySelector('input[type="date"]');
-  var applyEl=document.getElementById('apply-toggle');
+  var amtEl=document.querySelector('.md input[type="number"].inp-big');
   if(amtEl&&amtEl.value)S.partialForm.amount=amtEl.value;
-  if(noteEl)S.partialForm.note=noteEl.value;
-  if(dateEl)S.partialForm.date=dateEl.value;
-  if(applyEl)S.partialForm.applyNow=applyEl.checked;
-
   var f=S.partialForm;
   if(!f.amount)return;
   var idx=S.pending.findIndex(function(x){return x.id===f.id;});
@@ -1036,7 +1020,6 @@ function addPartialPay(){
 
   var payEntry={amount:paid,date:f.date||td(),note:f.note||"",applied:false};
 
-  // apply to main balance immediately if toggled
   if(f.applyNow){
     payEntry.applied=true;
     if(d.type==="owe_me"){
@@ -1054,7 +1037,6 @@ function addPartialPay(){
   d.payments.push(payEntry);
   d.remaining=Math.max(0,d.remaining-paid);
   localStorage.setItem("ex_pending",JSON.stringify(S.pending));
-  // sync updated debt to Sheets
   api({action:"update_debt",id:d.id,remaining:d.remaining,payments:JSON.stringify(d.payments)}).catch(function(){});
   S.modal=null;
   S.partialForm={id:"",amount:"",note:"",date:td(),applyNow:false};
@@ -1062,7 +1044,6 @@ function addPartialPay(){
   toast(f.applyNow ? fmt(paid)+" added to balance ✓" : "Payment of "+fmt(paid)+" recorded");
 }
 
-// apply a single recorded payment to main balance retroactively
 function applyPayment(debtId,pIdx){
   var didx=S.pending.findIndex(function(x){return x.id===debtId;});
   if(didx===-1)return;
@@ -1073,9 +1054,13 @@ function applyPayment(debtId,pIdx){
   localStorage.setItem("ex_pending",JSON.stringify(S.pending));
   api({action:"update_debt",id:d.id,remaining:d.remaining,payments:JSON.stringify(d.payments)}).catch(function(){});
   if(d.type==="owe_me"){
-    var e2={id:uid(),amount:p.amount,category:"other",desc:"Payment to "+d.person+(p.note?" · "+p.note:""),date:p.date,ts:Date.now(),type:"expense"};
+    var e2={id:uid(),amount:p.amount,category:"other_inc",desc:"Payment from "+d.person+(p.note?" · "+p.note:""),date:p.date,ts:Date.now(),type:"income"};
     S.data.push(e2);
-    api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"expense"}).catch(function(){});
+    api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"income"}).catch(function(){});
+  }else{
+    var e3={id:uid(),amount:p.amount,category:"other",desc:"Payment to "+d.person+(p.note?" · "+p.note:""),date:p.date,ts:Date.now(),type:"expense"};
+    S.data.push(e3);
+    api({action:"add",id:e3.id,amount:e3.amount,category:e3.category,desc:e3.desc,date:e3.date,type:"expense"}).catch(function(){});
   }
   localStorage.setItem("ex_pending",JSON.stringify(S.pending));
   R();toast(fmt(p.amount)+" applied to balance ✓");
@@ -1086,10 +1071,9 @@ function settleDebt(id){
   if(idx===-1)return;
   var d=S.pending[idx];
   var remaining=num(d.remaining!==undefined?d.remaining:d.amount);
-  // calculate how much has already been applied to balance
   var alreadyApplied=0;
   (d.payments||[]).forEach(function(p){if(p.applied)alreadyApplied+=num(p.amount);});
-  var toApply=remaining; // remaining already excludes all payments (applied or not)
+  var toApply=remaining;
 
   var msg="Mark as fully settled?\n\n";
   if(alreadyApplied>0)msg+="Already in balance: "+fmt(alreadyApplied)+"\n";
@@ -1119,15 +1103,8 @@ function openAddToDebt(id){
 }
 
 function addToDebt(){
-  var amtEl=document.querySelector('.inp-big');
-  var noteEl=document.querySelector('.inp-sm[placeholder="Note (optional)"]');
-  var dateEl=document.querySelector('input[type="date"]');
-  var applyEl=document.getElementById('add-apply-toggle');
+  var amtEl=document.querySelector('.md input[type="number"].inp-big');
   if(amtEl&&amtEl.value)S.addToDebtForm.amount=amtEl.value;
-  if(noteEl)S.addToDebtForm.note=noteEl.value;
-  if(dateEl)S.addToDebtForm.date=dateEl.value;
-  if(applyEl)S.addToDebtForm.applyNow=applyEl.checked;
-
   var f=S.addToDebtForm;
   if(!f.amount)return;
   var idx=S.pending.findIndex(function(x){return x.id===f.id;});
@@ -1136,11 +1113,9 @@ function addToDebt(){
   var added=num(f.amount);
   if(added<=0)return;
 
-  // add to original total and remaining
   d.amount=d.amount+added;
   d.remaining=d.remaining+added;
 
-  // log as a history entry on the debt
   d.payments=d.payments||[];
   d.payments.push({
     amount:added,
@@ -1150,15 +1125,12 @@ function addToDebt(){
     isAddition:true
   });
 
-  // optionally deduct/add from main balance now
   if(f.applyNow){
     if(d.type==="owe_me"){
-      // we gave them more money → expense
       var e1={id:uid(),amount:added,category:"other",desc:"Added to debt: "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"expense"};
       S.data.push(e1);
       api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"expense"}).catch(function(){});
     }else{
-      // someone gave us more → income
       var e2={id:uid(),amount:added,category:"other_inc",desc:"Added to debt: "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"income"};
       S.data.push(e2);
       api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"income"}).catch(function(){});
@@ -1168,7 +1140,6 @@ function addToDebt(){
 
   localStorage.setItem("ex_pending",JSON.stringify(S.pending));
   api({action:"update_debt",id:d.id,remaining:d.remaining,payments:JSON.stringify(d.payments)}).catch(function(){});
-  // also update the original amount on the sheet by delete+re-add
   api({action:"delete_debt",id:d.id}).then(function(){
     return api({action:"add_debt",id:d.id,person:d.person,amount:d.amount,type:d.type,desc:d.desc,date:d.date,remaining:d.remaining,payments:JSON.stringify(d.payments)});
   }).catch(function(){});
@@ -1176,6 +1147,37 @@ function addToDebt(){
   S.modal=null;
   S.addToDebtForm={id:"",amount:"",note:"",date:td(),applyNow:false};
   R();toast(fmt(added)+" added to "+d.person+"'s debt ✓");
+}
+
+function openEditDebt(id){
+  var idx=S.pending.findIndex(function(x){return x.id===id;});
+  if(idx===-1)return;
+  var d=S.pending[idx];
+  S.editDebtForm={id:id,amount:String(d.amount),person:d.person,type:d.type,desc:d.desc,date:d.date};
+  S.modal="editdebt";R();
+}
+
+function updateDebt(){
+  var amtEl=document.querySelector('.md input[type="number"].inp-big');
+  if(amtEl&&amtEl.value)S.editDebtForm.amount=amtEl.value;
+  var f=S.editDebtForm;
+  if(!f.amount)return;
+  var idx=S.pending.findIndex(function(x){return x.id===f.id;});
+  if(idx===-1)return;
+  var d=S.pending[idx];
+  var oldAmount=d.amount;
+  var newAmount=num(f.amount);
+  var diff=newAmount-oldAmount;
+  
+  d.amount=newAmount;
+  d.remaining=d.remaining+diff;
+  d.person=f.person;
+  d.desc=f.desc;
+  
+  localStorage.setItem("ex_pending",JSON.stringify(S.pending));
+  api({action:"update_debt",id:d.id,remaining:d.remaining,payments:JSON.stringify(d.payments)}).catch(function(){});
+  S.modal=null;R();
+  toast(fmt(newAmount)+" updated ✓");
 }
 
 function delDebt(id){
@@ -1301,35 +1303,19 @@ var _rt=null;
 function R(){if(_rt)return;_rt=requestAnimationFrame(function(){_rt=null;captureForm();doRender();});}
 
 function captureForm(){
-  // read live input values from DOM before re-rendering so they aren't lost
   if(!S.modal)return;
-  var a=document.querySelector('.inp-big');
-  var d=document.querySelector('.inp-sm[type="text"]');
+  var expenseModal=document.querySelector('.md');
+  if(!expenseModal)return;
+  var inps=expenseModal.querySelectorAll('input');
   if(S.modal==="expense"){
-    if(a&&a.value!=="")S.form.amount=a.value;
-    if(d)S.form.desc=d.value;
+    if(inps.length>0)S.form.amount=inps[0].value||S.form.amount;
+    if(inps.length>2)S.form.desc=inps[2].value||S.form.desc;
   }else if(S.modal==="income"){
-    if(a&&a.value!=="")S.incForm.amount=a.value;
-    if(d)S.incForm.desc=d.value;
-  }else if(S.modal==="debt"){
-    var person=document.querySelector('.inp-sm[placeholder="Name"]');
-    var note=document.querySelector('.inp-sm[placeholder="What for?"]');
-    if(a&&a.value!=="")S.debtForm.amount=a.value;
-    if(person)S.debtForm.person=person.value;
-    if(note)S.debtForm.desc=note.value;
-  }else if(S.modal==="addtodebt"){
-    var aa=document.querySelector('.inp-big');
-    var an=document.querySelector('.inp-sm[placeholder="Note (optional)"]');
-    if(aa&&aa.value!=="")S.addToDebtForm.amount=aa.value;
-    if(an)S.addToDebtForm.note=an.value;
-  }else if(S.modal==="partial"){
-    var pa=document.querySelector('.inp-big');
-    var pn=document.querySelector('.inp-sm[placeholder="Note (optional)"]');
-    if(pa&&pa.value!=="")S.partialForm.amount=pa.value;
-    if(pn)S.partialForm.note=pn.value;
+    if(inps.length>0)S.incForm.amount=inps[0].value||S.incForm.amount;
+    if(inps.length>2)S.incForm.desc=inps[2].value||S.incForm.desc;
   }else if(S.modal==="edit"){
-    if(a&&a.value!=="")S.editForm.amount=a.value;
-    if(d)S.editForm.desc=d.value;
+    if(inps.length>0)S.editForm.amount=inps[0].value||S.editForm.amount;
+    if(inps.length>2)S.editForm.desc=inps[2].value||S.editForm.desc;
   }
 }
 
@@ -1366,7 +1352,6 @@ function doRender(){
   var meE=me.filter(function(e){return e.type!=="income";});
   var meI=me.filter(function(e){return e.type==="income";});
   var mExp=tot(meE),mInc=tot(meI);
-  // month options
   var mosSet={};S.data.forEach(function(e){if(e.date)mosSet[e.date.slice(0,7)]=true;});
   var mos=Object.keys(mosSet).sort().reverse();
   if(mos.indexOf(mk())<0)mos.unshift(mk());
@@ -1382,7 +1367,6 @@ function doRender(){
     '<button class="hd-btn" onclick="load()" title="Refresh">🔄</button>'+
     '</div></div>';
 
-  // balance card
   h+='<div class="bal-card">'+
     '<div class="bal-label">Total Balance</div>'+
     '<div class="bal-amount '+(bal>=0?"bal-pos":"bal-neg")+'">'+(bal>=0?"":"-")+fmt(bal)+'</div>'+
@@ -1399,7 +1383,6 @@ function doRender(){
   }
   h+='</div></div>';
 
-  // ── NAV ──
   h+='<div class="nv">'+
     ['home','debts','report','history','settings'].map(function(p){
       var icons={home:'🏠',debts:'🤝',report:'📊',history:'📋',settings:'⚙️'};
@@ -1409,14 +1392,12 @@ function doRender(){
     }).join('')+
   '</div>';
 
-  // ── CONTENT ──
   var content="";
 
   // ════════ HOME ════════
   if(S.page==="home"){
     var wd=weekData();var mx=1;wd.forEach(function(d){if(d.e>mx)mx=d.e;});
 
-    // weekly chart
     var wkH='<div class="wk">';
     wd.forEach(function(d){
       var bh=Math.max(d.e/mx*50,d.e>0?4:3);
@@ -1459,7 +1440,6 @@ function doRender(){
       '</div>';
     content+='<button class="btn btn-i" style="margin-bottom:14px;margin-top:0" onclick="S.modal=\'debt\';R()">＋ Add New Debt</button>';
 
-    // ── Balance Preview ──
     var tI2=tot(getI()),tE2=tot(getE());
     var curBal=S.openBal+tI2-tE2;
     var ifAllSettled=curBal+totOweMe-totOweThem;
@@ -1493,7 +1473,6 @@ function doRender(){
       var payments=d.payments||[];
 
       var card='<div class="debt-card '+(isCredit?"owe-me":"owe-them")+'">';
-      // header row
       card+='<div class="dc-head">'+
         '<div class="dc-left">'+
         '<div class="dc-ic">'+(isCredit?'🤝':'💸')+'</div>'+
@@ -1503,17 +1482,16 @@ function doRender(){
         '<div class="dc-right">'+
         '<div class="dc-remaining" style="color:'+(isCredit?"var(--green)":"var(--red)")+'">'+fmt(remaining)+'</div>'+
         '<div class="dc-orig">of '+fmt(original)+'</div>'+
+        '<button class="hd-btn" style="margin-top:6px" onclick="openEditDebt(\''+d.id+'\')" title="Edit">✏️</button>'+
         '</div></div>';
 
-      // progress bar
       card+='<div class="dc-prog-wrap">'+
         '<div class="dc-prog-bar"><div class="dc-prog-fill" style="width:'+pct+'%;background:'+(isCredit?"var(--green)":"var(--red)")+'"></div></div>'+
         '<div class="dc-prog-labels"><span>Paid '+fmt(paid)+'</span><span>'+pct+'%</span></div>'+
         '</div>';
 
-      // payment history
       if(payments.length){
-        card+='<div class="dc-history">';
+        card+='<div class="dc-history" style="max-height:150px;overflow-y:auto">';
         payments.forEach(function(p,pi){
           var isAdd=p.isAddition;
           var dotColor=isAdd?"var(--blue)":(p.applied?(isCredit?"var(--green)":"var(--red)"):"var(--txt3)");
@@ -1532,7 +1510,6 @@ function doRender(){
         card+='</div>';
       }
 
-      // action buttons
       card+='<div class="dc-actions">'+
         '<button class="dc-btn dc-btn-add" onclick="openAddToDebt(\''+d.id+'\')" style="color:var(--blue)">＋ Add</button>'+
         '<button class="dc-btn dc-btn-pay" onclick="openPartialPay(\''+d.id+'\')">💳 Pay partial</button>'+
@@ -1673,13 +1650,11 @@ function doRender(){
       '<div class="set-row"><div><div class="set-label">Sync Data</div><div class="set-sub">Pull latest from Google Sheets</div></div>'+
       '<button class="hd-btn" onclick="load()">🔄 Sync</button></div>'+
       '</div>'+
-      '<div class="version-tag">Fulo v2.0 · Built with ❤️</div>';
+      '<div class="version-tag">Fulo v2.0 · Fixed & Built with ❤️</div>';
   }
 
-  // ── FULL RENDER ──
   h+='<div class="ct">'+content+'</div>';
 
-  // ── FABs ──
   if(S.page==="debts"){
     h+='<div class="fabs">'+
       '<button class="fab fab-i" onclick="S.modal=\'debt\';R()"><span>＋</span> Add Debt</button>'+
@@ -1691,10 +1666,8 @@ function doRender(){
       '</div>';
   }
 
-  // ── MODALS ──
   if(S.modal){
     var md="";
-    // ── Add Expense Modal ──
     if(S.modal==="expense"){
       md='<div class="md-h"><h3>Add Expense</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>'+
         '<input class="inp-big exp-b" type="number" inputmode="decimal" placeholder="0.00" value="'+S.form.amount+'" oninput="S.form.amount=this.value">'+
@@ -1706,7 +1679,6 @@ function doRender(){
         mkOcr("expense")+
         '<button class="btn btn-e" onclick="addExp()">Save Expense</button>';
     }
-    // ── Add Income Modal ──
     else if(S.modal==="income"){
       md='<div class="md-h"><h3>Add Income</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>'+
         '<input class="inp-big inc-b" type="number" inputmode="decimal" placeholder="0.00" value="'+S.incForm.amount+'" oninput="S.incForm.amount=this.value">'+
@@ -1718,7 +1690,6 @@ function doRender(){
         mkOcr("income")+
         '<button class="btn btn-i" onclick="addInc()">Save Income</button>';
     }
-    // ── Add Debt Modal ──
     else if(S.modal==="debt"){
       md='<div class="md-h"><h3>Log Debt</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>'+
         '<label class="lb">Type</label>'+
@@ -1734,7 +1705,6 @@ function doRender(){
         '<input class="inp-sm" type="text" placeholder="What for?" value="'+S.debtForm.desc+'" oninput="S.debtForm.desc=this.value">'+
         '<button class="btn btn-i" onclick="addDebt()">Save Debt</button>';
     }
-    // ── Partial Payment Modal ──
     else if(S.modal==="partial"){
       var pd=S.pending.find(function(x){return x.id===S.partialForm.id;});
       var pdRemaining=pd?num(pd.remaining!==undefined?pd.remaining:pd.amount):0;
@@ -1747,13 +1717,12 @@ function doRender(){
           '<div style="font-size:13px;font-weight:600">'+pd.person+'</div></div>';
       }
       md+='<label class="lb">Amount paid</label>'+
-        '<input class="inp-big" type="number" inputmode="decimal" placeholder="0.00" value="'+S.partialForm.amount+'">'+
+        '<input class="inp-big" type="number" inputmode="decimal" placeholder="0.00" value="'+S.partialForm.amount+'" oninput="S.partialForm.amount=this.value">'+
         '<label class="lb">Date</label>'+
         '<input class="inp-sm" type="date" value="'+S.partialForm.date+'" onchange="S.partialForm.date=this.value">'+
         '<label class="lb">Note (optional)</label>'+
-        '<input class="inp-sm" type="text" placeholder="Note (optional)" value="'+S.partialForm.note+'">';
+        '<input class="inp-sm" type="text" placeholder="Note (optional)" value="'+S.partialForm.note+'" oninput="S.partialForm.note=this.value">';
 
-      // apply toggle
       var toggleColor=isCredit?"var(--green)":"var(--red)";
       var toggleLabel=isCredit?"Add to my income (main balance)":"Deduct from my expenses (main balance)";
       md+='<label style="display:flex;align-items:center;gap:10px;background:var(--bg3);border-radius:12px;padding:13px 14px;margin-top:12px;cursor:pointer">'+
@@ -1763,7 +1732,6 @@ function doRender(){
         '</label>'+
         '<button class="btn '+(isCredit?"btn-i":"btn-e")+'" onclick="addPartialPay()">Save Payment</button>';
     }
-    // ── Add to Debt Modal ──
     else if(S.modal==="addtodebt"){
       var atd=S.pending.find(function(x){return x.id===S.addToDebtForm.id;});
       var atdIsCredit=atd&&atd.type==="owe_me";
@@ -1780,11 +1748,11 @@ function doRender(){
           '</div></div>';
       }
       md+='<label class="lb">Amount to add</label>'+
-        '<input class="inp-big" style="border-color:var(--blue)" type="number" inputmode="decimal" placeholder="0.00" value="'+S.addToDebtForm.amount+'">'+
+        '<input class="inp-big" style="border-color:var(--blue)" type="number" inputmode="decimal" placeholder="0.00" value="'+S.addToDebtForm.amount+'" oninput="S.addToDebtForm.amount=this.value">'+
         '<label class="lb">Date</label>'+
         '<input class="inp-sm" type="date" value="'+S.addToDebtForm.date+'" onchange="S.addToDebtForm.date=this.value">'+
         '<label class="lb">Note (optional)</label>'+
-        '<input class="inp-sm" type="text" placeholder="Note (optional)" value="'+S.addToDebtForm.note+'">';
+        '<input class="inp-sm" type="text" placeholder="Note (optional)" value="'+S.addToDebtForm.note+'" oninput="S.addToDebtForm.note=this.value">';
       var atdLabel=atdIsCredit
         ?"Deduct this amount from my balance (I gave them more)"
         :"Add this amount to my income (they gave me more)";
@@ -1807,6 +1775,18 @@ function doRender(){
         '<button class="btn '+(isI?"btn-i":"btn-e")+'" onclick="updEnt()">Update</button>'+
         '<button class="btn btn-del" onclick="delEnt(\''+f.id+'\')">🗑 Delete Entry</button>';
     }
+    else if(S.modal==="editdebt"){
+      var f=S.editDebtForm;
+      md='<div class="md-h"><h3>Edit Debt</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>'+
+        '<label class="lb">Person</label>'+
+        '<input class="inp-sm" type="text" placeholder="Name" value="'+f.person+'" oninput="S.editDebtForm.person=this.value">'+
+        '<label class="lb">Total Amount</label>'+
+        '<input class="inp-big" type="number" inputmode="decimal" placeholder="0.00" value="'+f.amount+'" oninput="S.editDebtForm.amount=this.value">'+
+        '<label class="lb">Note</label>'+
+        '<input class="inp-sm" type="text" placeholder="Details…" value="'+f.desc+'" oninput="S.editDebtForm.desc=this.value">'+
+        '<button class="btn btn-i" onclick="updateDebt()">Update Debt</button>'+
+        '<button class="btn btn-del" onclick="delDebt(\''+f.id+'\')">🗑 Delete Debt</button>';
+    }
 
     h+='<div class="ov" onclick="if(event.target===this){S.modal=null;R()}"><div class="md">'+md+'</div></div>';
   }
@@ -1814,7 +1794,6 @@ function doRender(){
   app.innerHTML=h;
 }
 
-// ── INIT ──
 if(S.url&&localStorage.getItem("ex_url")){conn();}else{R();}
 </script>
 </body>
