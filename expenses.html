@@ -854,6 +854,7 @@ var S={
   pending:JSON.parse(localStorage.getItem("ex_pending")||"[]"),
   darkMode:localStorage.getItem("ex_theme")==="dark",
   partialForm:{id:"",amount:"",note:"",date:""},
+  addToDebtForm:{id:"",amount:"",note:"",date:"",applyNow:false},
 };
 
 function applyTheme(){
@@ -1112,6 +1113,71 @@ function settleDebt(id){
   S.modal=null;R();toast("Debt settled ✓");
 }
 
+function openAddToDebt(id){
+  S.addToDebtForm={id:id,amount:"",note:"",date:td(),applyNow:false};
+  S.modal="addtodebt";R();
+}
+
+function addToDebt(){
+  var amtEl=document.querySelector('.inp-big');
+  var noteEl=document.querySelector('.inp-sm[placeholder="Note (optional)"]');
+  var dateEl=document.querySelector('input[type="date"]');
+  var applyEl=document.getElementById('add-apply-toggle');
+  if(amtEl&&amtEl.value)S.addToDebtForm.amount=amtEl.value;
+  if(noteEl)S.addToDebtForm.note=noteEl.value;
+  if(dateEl)S.addToDebtForm.date=dateEl.value;
+  if(applyEl)S.addToDebtForm.applyNow=applyEl.checked;
+
+  var f=S.addToDebtForm;
+  if(!f.amount)return;
+  var idx=S.pending.findIndex(function(x){return x.id===f.id;});
+  if(idx===-1)return;
+  var d=S.pending[idx];
+  var added=num(f.amount);
+  if(added<=0)return;
+
+  // add to original total and remaining
+  d.amount=d.amount+added;
+  d.remaining=d.remaining+added;
+
+  // log as a history entry on the debt
+  d.payments=d.payments||[];
+  d.payments.push({
+    amount:added,
+    date:f.date||td(),
+    note:(f.note||"")+"  [+added to debt]",
+    applied:false,
+    isAddition:true
+  });
+
+  // optionally deduct/add from main balance now
+  if(f.applyNow){
+    if(d.type==="owe_me"){
+      // we gave them more money → expense
+      var e1={id:uid(),amount:added,category:"other",desc:"Added to debt: "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"expense"};
+      S.data.push(e1);
+      api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"expense"}).catch(function(){});
+    }else{
+      // someone gave us more → income
+      var e2={id:uid(),amount:added,category:"other_inc",desc:"Added to debt: "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"income"};
+      S.data.push(e2);
+      api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"income"}).catch(function(){});
+    }
+    d.payments[d.payments.length-1].applied=true;
+  }
+
+  localStorage.setItem("ex_pending",JSON.stringify(S.pending));
+  api({action:"update_debt",id:d.id,remaining:d.remaining,payments:JSON.stringify(d.payments)}).catch(function(){});
+  // also update the original amount on the sheet by delete+re-add
+  api({action:"delete_debt",id:d.id}).then(function(){
+    return api({action:"add_debt",id:d.id,person:d.person,amount:d.amount,type:d.type,desc:d.desc,date:d.date,remaining:d.remaining,payments:JSON.stringify(d.payments)});
+  }).catch(function(){});
+
+  S.modal=null;
+  S.addToDebtForm={id:"",amount:"",note:"",date:td(),applyNow:false};
+  R();toast(fmt(added)+" added to "+d.person+"'s debt ✓");
+}
+
 function delDebt(id){
   if(!confirm("Delete this debt?"))return;
   S.pending=S.pending.filter(function(x){return x.id!==id;});
@@ -1251,6 +1317,11 @@ function captureForm(){
     if(a&&a.value!=="")S.debtForm.amount=a.value;
     if(person)S.debtForm.person=person.value;
     if(note)S.debtForm.desc=note.value;
+  }else if(S.modal==="addtodebt"){
+    var aa=document.querySelector('.inp-big');
+    var an=document.querySelector('.inp-sm[placeholder="Note (optional)"]');
+    if(aa&&aa.value!=="")S.addToDebtForm.amount=aa.value;
+    if(an)S.addToDebtForm.note=an.value;
   }else if(S.modal==="partial"){
     var pa=document.querySelector('.inp-big');
     var pn=document.querySelector('.inp-sm[placeholder="Note (optional)"]');
@@ -1444,14 +1515,17 @@ function doRender(){
       if(payments.length){
         card+='<div class="dc-history">';
         payments.forEach(function(p,pi){
+          var isAdd=p.isAddition;
+          var dotColor=isAdd?"var(--blue)":(p.applied?(isCredit?"var(--green)":"var(--red)"):"var(--txt3)");
+          var noteClean=(p.note||"").replace(/\s*\[.*?\]/g,"").trim();
           card+='<div class="dc-pay-row">'+
-            '<span class="dc-pay-dot" style="background:'+(p.applied?(isCredit?"var(--green)":"var(--red)"):"var(--txt3)")+'"></span>'+
+            '<span class="dc-pay-dot" style="background:'+dotColor+'"></span>'+
             '<span class="dc-pay-date">'+p.date+'</span>'+
-            (p.note?'<span class="dc-pay-note">'+p.note+'</span>':'<span class="dc-pay-note"></span>')+
-            '<span class="dc-pay-amt">'+fmt(p.amount)+'</span>'+
-            (p.applied
-              ? '<span style="font-size:9px;color:var(--txt3);margin-left:4px;white-space:nowrap">✓ applied</span>'
-              : '<button class="dc-apply-btn" style="color:'+(isCredit?"var(--green)":"var(--red)")+'" onclick="applyPayment(\''+d.id+'\','+pi+')">'+(isCredit?"→ Income":"→ Expense")+'</button>'
+            (noteClean?'<span class="dc-pay-note">'+noteClean+'</span>':'<span class="dc-pay-note"></span>')+
+            '<span class="dc-pay-amt" style="color:'+(isAdd?"var(--blue)":"inherit")+'">'+(isAdd?"+":"-")+fmt(p.amount)+'</span>'+
+            (!isAdd&&!p.applied
+              ? '<button class="dc-apply-btn" style="color:'+(isCredit?"var(--green)":"var(--red)")+'" onclick="applyPayment(\''+d.id+'\','+pi+')">'+(isCredit?"→ Inc":"→ Exp")+'</button>'
+              : (p.applied?'<span style="font-size:9px;color:var(--txt3);margin-left:4px">✓</span>':'')
             )+
             '</div>';
         });
@@ -1460,6 +1534,7 @@ function doRender(){
 
       // action buttons
       card+='<div class="dc-actions">'+
+        '<button class="dc-btn dc-btn-add" onclick="openAddToDebt(\''+d.id+'\')" style="color:var(--blue)">＋ Add</button>'+
         '<button class="dc-btn dc-btn-pay" onclick="openPartialPay(\''+d.id+'\')">💳 Pay partial</button>'+
         '<button class="dc-btn dc-btn-settle" onclick="settleDebt(\''+d.id+'\')" style="color:'+(isCredit?"var(--green)":"var(--red)")+'">✅ Settle</button>'+
         '<button class="dc-btn dc-btn-del" onclick="delDebt(\''+d.id+'\')">🗑️</button>'+
@@ -1688,7 +1763,38 @@ function doRender(){
         '</label>'+
         '<button class="btn '+(isCredit?"btn-i":"btn-e")+'" onclick="addPartialPay()">Save Payment</button>';
     }
-    // ── Edit Modal ──
+    // ── Add to Debt Modal ──
+    else if(S.modal==="addtodebt"){
+      var atd=S.pending.find(function(x){return x.id===S.addToDebtForm.id;});
+      var atdIsCredit=atd&&atd.type==="owe_me";
+      md='<div class="md-h"><h3>Add to Debt</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>';
+      if(atd){
+        md+='<div style="background:var(--bg3);border-radius:12px;padding:12px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">'+
+          '<div>'+
+          '<div style="font-size:11px;color:var(--txt3)">Current total debt</div>'+
+          '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:22px;font-weight:800;color:'+(atdIsCredit?"var(--green)":"var(--red)")+'">'+fmt(atd.amount)+'</div>'+
+          '</div>'+
+          '<div style="text-align:right">'+
+          '<div style="font-size:13px;font-weight:700">'+atd.person+'</div>'+
+          '<div style="font-size:10px;color:var(--txt3);margin-top:2px">Remaining: '+fmt(atd.remaining)+'</div>'+
+          '</div></div>';
+      }
+      md+='<label class="lb">Amount to add</label>'+
+        '<input class="inp-big" style="border-color:var(--blue)" type="number" inputmode="decimal" placeholder="0.00" value="'+S.addToDebtForm.amount+'">'+
+        '<label class="lb">Date</label>'+
+        '<input class="inp-sm" type="date" value="'+S.addToDebtForm.date+'" onchange="S.addToDebtForm.date=this.value">'+
+        '<label class="lb">Note (optional)</label>'+
+        '<input class="inp-sm" type="text" placeholder="Note (optional)" value="'+S.addToDebtForm.note+'">';
+      var atdLabel=atdIsCredit
+        ?"Deduct this amount from my balance (I gave them more)"
+        :"Add this amount to my income (they gave me more)";
+      md+='<label style="display:flex;align-items:center;gap:10px;background:var(--bg3);border-radius:12px;padding:13px 14px;margin-top:12px;cursor:pointer">'+
+        '<input type="checkbox" id="add-apply-toggle" style="width:18px;height:18px;accent-color:var(--blue);cursor:pointer" '+(S.addToDebtForm.applyNow?"checked":"")+' onchange="S.addToDebtForm.applyNow=this.checked">'+
+        '<div><div style="font-size:13px;font-weight:600;color:var(--blue)">'+atdLabel+'</div>'+
+        '<div style="font-size:10px;color:var(--txt3);margin-top:2px">Check to apply to your main balance now</div></div>'+
+        '</label>'+
+        '<button class="btn" style="background:var(--blue);color:#fff;margin-top:12px" onclick="addToDebt()">Add to Debt</button>';
+    }
     else if(S.modal==="edit"){
       var f=S.editForm;var isI=f.type==="income";
       md='<div class="md-h"><h3>Edit '+(isI?"Income":"Expense")+'</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>'+
