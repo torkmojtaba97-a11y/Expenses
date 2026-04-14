@@ -446,7 +446,7 @@ button,input,select{font-family:'Nunito',sans-serif}
 .dc-ic{width:36px;height:36px;border-radius:10px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
 .dc-name{font-weight:700;font-size:14px}
 .dc-desc{font-size:10px;color:var(--txt3);margin-top:2px}
-.dc-right{text-align:right}
+.dc-right{text-align:right;display:flex;align-items:flex-start;gap:8px}
 .dc-remaining{font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:800;line-height:1}
 .dc-orig{font-size:10px;color:var(--txt3);margin-top:2px}
 
@@ -485,6 +485,13 @@ button,input,select{font-family:'Nunito',sans-serif}
   cursor:pointer;margin-left:4px;white-space:nowrap;
 }
 .dc-apply-btn:active{opacity:.7}
+.dc-del-pay-btn{
+  background:none;border:none;
+  font-size:11px;cursor:pointer;
+  color:var(--txt3);padding:2px 4px;
+  margin-left:2px;
+}
+.dc-del-pay-btn:active{color:var(--red)}
 
 /* ── HISTORY FILTERS ── */
 .chips{
@@ -827,6 +834,30 @@ function toast(msg,dur){
   if(!el)return;el.textContent=msg;el.classList.add("show");
   setTimeout(function(){el.classList.remove("show");},dur||2000);
 }
+// deep clone helper to avoid reference issues
+function clone(o){return JSON.parse(JSON.stringify(o));}
+function savePending(){localStorage.setItem("ex_pending",JSON.stringify(S.pending));}
+function findDebt(id){
+  for(var i=0;i<S.pending.length;i++){if(S.pending[i].id===id)return i;}
+  return -1;
+}
+function syncDebtToServer(d){
+  api({action:"delete_debt",id:d.id}).then(function(){
+    return api({action:"add_debt",id:d.id,person:d.person,amount:d.amount,type:d.type,desc:d.desc||"",date:d.date,remaining:d.remaining,payments:JSON.stringify(d.payments||[])});
+  }).catch(function(){});
+}
+// recalculate remaining from payments
+function recalcRemaining(d){
+  var totalPaid=0;
+  var totalAdded=0;
+  (d.payments||[]).forEach(function(p){
+    if(p.isAddition) totalAdded+=num(p.amount);
+    else totalPaid+=num(p.amount);
+  });
+  // original amount = base amount (without additions)
+  // d.amount already includes additions, so remaining = d.amount - totalPaid
+  d.remaining=Math.max(0,d.amount-totalPaid);
+}
 
 // ─────────────────────────────────────────
 //  STATE
@@ -842,6 +873,7 @@ var S={
   incForm:{amount:"",cat:"salary",desc:"",date:td()},
   editForm:{},
   debtForm:{person:"",amount:"",type:"owe_me",desc:""},
+  editDebtForm:{id:"",person:"",amount:"",type:"owe_me",desc:""},
   status:"",
   syncing:false,
   search:"",
@@ -853,9 +885,9 @@ var S={
   ocrAmounts:[],
   pending:JSON.parse(localStorage.getItem("ex_pending")||"[]"),
   darkMode:localStorage.getItem("ex_theme")==="dark",
-  editDebtForm:{id:"",person:"",amount:"",type:"owe_me",desc:""},
-  partialForm:{id:"",amount:"",note:"",date:""},
+  partialForm:{id:"",amount:"",note:"",date:"",applyNow:false},
   addToDebtForm:{id:"",amount:"",note:"",date:"",applyNow:false},
+  editPayForm:{debtId:"",payIdx:-1,amount:"",note:"",date:""},
 };
 
 function applyTheme(){
@@ -897,7 +929,6 @@ function api(p){
 function syncResponse(r){
   if(r.ok){
     S.data=cleanData(r.data||[]);
-    // always replace pending with server data (server is source of truth)
     if(Array.isArray(r.pending)){
       S.pending=r.pending.map(function(d){
         d.amount=num(d.amount);
@@ -905,7 +936,7 @@ function syncResponse(r){
         d.payments=Array.isArray(d.payments)?d.payments:[];
         return d;
       });
-      localStorage.setItem("ex_pending",JSON.stringify(S.pending));
+      savePending();
     }
   }
 }
@@ -935,8 +966,8 @@ function conn(){
 //  CRUD
 // ─────────────────────────────────────────
 function addExp(){
-  var amtEl=document.querySelector('.inp-big');
-  var descEl=document.querySelector('.inp-sm[type="text"]');
+  var amtEl=document.getElementById('modal-amount');
+  var descEl=document.getElementById('modal-desc');
   if(amtEl&&amtEl.value)S.form.amount=amtEl.value;
   if(descEl)S.form.desc=descEl.value;
   if(!S.form.amount)return;
@@ -948,8 +979,8 @@ function addExp(){
   api({action:"add",id:e.id,amount:e.amount,category:e.category,desc:e.desc,date:e.date,type:"expense"}).catch(function(){});
 }
 function addInc(){
-  var amtEl=document.querySelector('.inp-big');
-  var descEl=document.querySelector('.inp-sm[type="text"]');
+  var amtEl=document.getElementById('modal-amount');
+  var descEl=document.getElementById('modal-desc');
   if(amtEl&&amtEl.value)S.incForm.amount=amtEl.value;
   if(descEl)S.incForm.desc=descEl.value;
   if(!S.incForm.amount)return;
@@ -961,6 +992,10 @@ function addInc(){
   api({action:"add",id:e.id,amount:e.amount,category:e.category,desc:e.desc,date:e.date,type:"income"}).catch(function(){});
 }
 function updEnt(){
+  var amtEl=document.getElementById('modal-amount');
+  var descEl=document.getElementById('modal-desc');
+  if(amtEl&&amtEl.value)S.editForm.amount=amtEl.value;
+  if(descEl)S.editForm.desc=descEl.value;
   var f=S.editForm;if(!f.amount)return;
   for(var i=0;i<S.data.length;i++){
     if(S.data[i].id===f.id){
@@ -991,12 +1026,12 @@ function openEd(id){
 function setOB(v){S.openBal=num(v);localStorage.setItem("ex_openbal",S.openBal);}
 
 // ─────────────────────────────────────────
-//  DEBTS
+//  DEBTS — ALL FIXED
 // ─────────────────────────────────────────
 function addDebt(){
-  var amtEl=document.querySelector('.inp-big');
-  var personEl=document.querySelector('.inp-sm[placeholder="Name"]');
-  var noteEl=document.querySelector('.inp-sm[placeholder="What for?"]');
+  var amtEl=document.getElementById('modal-amount');
+  var personEl=document.getElementById('debt-person');
+  var noteEl=document.getElementById('debt-note');
   if(amtEl&&amtEl.value)S.debtForm.amount=amtEl.value;
   if(personEl)S.debtForm.person=personEl.value;
   if(noteEl)S.debtForm.desc=noteEl.value;
@@ -1004,22 +1039,21 @@ function addDebt(){
   var orig=num(S.debtForm.amount);
   var d={id:uid(),person:S.debtForm.person,amount:orig,remaining:orig,type:S.debtForm.type,desc:S.debtForm.desc,date:td(),payments:[]};
   S.pending.push(d);
-  localStorage.setItem("ex_pending",JSON.stringify(S.pending));
+  savePending();
   S.debtForm={person:"",amount:"",type:"owe_me",desc:""};
   S.modal=null;R();toast("Debt logged ✓");
-  // sync to Sheets so other devices see it
   api({action:"add_debt",id:d.id,person:d.person,amount:d.amount,type:d.type,desc:d.desc,date:d.date,remaining:d.remaining,payments:"[]"}).catch(function(){});
 }
 
 function openPartialPay(id){
-  S.partialForm={id:id,amount:"",note:"",date:td()};
+  S.partialForm={id:id,amount:"",note:"",date:td(),applyNow:false};
   S.modal="partial";R();
 }
 
 function addPartialPay(){
-  var amtEl=document.querySelector('.inp-big');
-  var noteEl=document.querySelector('.inp-sm[placeholder="Note (optional)"]');
-  var dateEl=document.querySelector('input[type="date"]');
+  var amtEl=document.getElementById('modal-amount');
+  var noteEl=document.getElementById('pay-note');
+  var dateEl=document.getElementById('pay-date');
   var applyEl=document.getElementById('apply-toggle');
   if(amtEl&&amtEl.value)S.partialForm.amount=amtEl.value;
   if(noteEl)S.partialForm.note=noteEl.value;
@@ -1028,7 +1062,7 @@ function addPartialPay(){
 
   var f=S.partialForm;
   if(!f.amount)return;
-  var idx=S.pending.findIndex(function(x){return x.id===f.id;});
+  var idx=findDebt(f.id);
   if(idx===-1)return;
   var d=S.pending[idx];
   var paid=num(f.amount);
@@ -1037,7 +1071,6 @@ function addPartialPay(){
 
   var payEntry={amount:paid,date:f.date||td(),note:f.note||"",applied:false};
 
-  // apply to main balance immediately if toggled
   if(f.applyNow){
     payEntry.applied=true;
     if(d.type==="owe_me"){
@@ -1054,49 +1087,46 @@ function addPartialPay(){
   d.payments=d.payments||[];
   d.payments.push(payEntry);
   d.remaining=Math.max(0,d.remaining-paid);
-  localStorage.setItem("ex_pending",JSON.stringify(S.pending));
-  // sync updated debt to Sheets
-  api({action:"update_debt",id:d.id,remaining:d.remaining,payments:JSON.stringify(d.payments)}).catch(function(){});
+  savePending();
+  syncDebtToServer(d);
   S.modal=null;
   S.partialForm={id:"",amount:"",note:"",date:td(),applyNow:false};
   R();
   toast(f.applyNow ? fmt(paid)+" added to balance ✓" : "Payment of "+fmt(paid)+" recorded");
 }
 
-// apply a single recorded payment to main balance retroactively
+// ── FIX: applyPayment direction was wrong for owe_me ──
 function applyPayment(debtId,pIdx){
-  var didx=S.pending.findIndex(function(x){return x.id===debtId;});
+  var didx=findDebt(debtId);
   if(didx===-1)return;
   var d=S.pending[didx];
   var p=d.payments[pIdx];
   if(!p||p.applied)return;
   p.applied=true;
-  localStorage.setItem("ex_pending",JSON.stringify(S.pending));
-  api({action:"update_debt",id:d.id,remaining:d.remaining,payments:JSON.stringify(d.payments)}).catch(function(){});
   if(d.type==="owe_me"){
-    // they owe me → they paid me back → income for me
+    // they owe me → they paid me back → INCOME for me
     var e1={id:uid(),amount:p.amount,category:"other_inc",desc:"Payment from "+d.person+(p.note?" · "+p.note:""),date:p.date,ts:Date.now(),type:"income"};
     S.data.push(e1);
     api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"income"}).catch(function(){});
   }else{
-    // I owe them → I paid them → expense for me
+    // I owe them → I paid them → EXPENSE for me
     var e2={id:uid(),amount:p.amount,category:"other",desc:"Payment to "+d.person+(p.note?" · "+p.note:""),date:p.date,ts:Date.now(),type:"expense"};
     S.data.push(e2);
     api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"expense"}).catch(function(){});
   }
-  localStorage.setItem("ex_pending",JSON.stringify(S.pending));
+  savePending();
+  syncDebtToServer(d);
   R();toast(fmt(p.amount)+" applied to balance ✓");
 }
 
 function settleDebt(id){
-  var idx=S.pending.findIndex(function(x){return x.id===id;});
+  var idx=findDebt(id);
   if(idx===-1)return;
   var d=S.pending[idx];
   var remaining=num(d.remaining!==undefined?d.remaining:d.amount);
-  // calculate how much has already been applied to balance
   var alreadyApplied=0;
-  (d.payments||[]).forEach(function(p){if(p.applied)alreadyApplied+=num(p.amount);});
-  var toApply=remaining; // remaining already excludes all payments (applied or not)
+  (d.payments||[]).forEach(function(p){if(p.applied&&!p.isAddition)alreadyApplied+=num(p.amount);});
+  var toApply=remaining;
 
   var msg="Mark as fully settled?\n\n";
   if(alreadyApplied>0)msg+="Already in balance: "+fmt(alreadyApplied)+"\n";
@@ -1115,20 +1145,22 @@ function settleDebt(id){
     }
   }
   S.pending.splice(idx,1);
-  localStorage.setItem("ex_pending",JSON.stringify(S.pending));
+  savePending();
   api({action:"delete_debt",id:id}).catch(function(){});
   S.modal=null;R();toast("Debt settled ✓");
 }
 
+// ── FIX: openAddToDebt now uses unique ID properly ──
 function openAddToDebt(id){
   S.addToDebtForm={id:id,amount:"",note:"",date:td(),applyNow:false};
   S.modal="addtodebt";R();
 }
 
+// ── FIX: addToDebt only modifies the specific debt by ID ──
 function addToDebt(){
-  var amtEl=document.querySelector('.inp-big');
-  var noteEl=document.querySelector('.inp-sm[placeholder="Note (optional)"]');
-  var dateEl=document.querySelector('input[type="date"]');
+  var amtEl=document.getElementById('modal-amount');
+  var noteEl=document.getElementById('add-note');
+  var dateEl=document.getElementById('add-date');
   var applyEl=document.getElementById('add-apply-toggle');
   if(amtEl&&amtEl.value)S.addToDebtForm.amount=amtEl.value;
   if(noteEl)S.addToDebtForm.note=noteEl.value;
@@ -1137,17 +1169,17 @@ function addToDebt(){
 
   var f=S.addToDebtForm;
   if(!f.amount)return;
-  var idx=S.pending.findIndex(function(x){return x.id===f.id;});
-  if(idx===-1)return;
+  // FIX: use findDebt with the specific ID from the form
+  var idx=findDebt(f.id);
+  if(idx===-1){toast("Debt not found ⚠");return;}
   var d=S.pending[idx];
   var added=num(f.amount);
   if(added<=0)return;
 
-  // add to original total and remaining
+  // add to ONLY this debt's total and remaining
   d.amount=d.amount+added;
   d.remaining=d.remaining+added;
 
-  // log as a history entry on the debt
   d.payments=d.payments||[];
   d.payments.push({
     amount:added,
@@ -1157,15 +1189,12 @@ function addToDebt(){
     isAddition:true
   });
 
-  // optionally deduct/add from main balance now
   if(f.applyNow){
     if(d.type==="owe_me"){
-      // we gave them more money → expense
       var e1={id:uid(),amount:added,category:"other",desc:"Added to debt: "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"expense"};
       S.data.push(e1);
       api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"expense"}).catch(function(){});
     }else{
-      // someone gave us more → income
       var e2={id:uid(),amount:added,category:"other_inc",desc:"Added to debt: "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"income"};
       S.data.push(e2);
       api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"income"}).catch(function(){});
@@ -1173,12 +1202,8 @@ function addToDebt(){
     d.payments[d.payments.length-1].applied=true;
   }
 
-  localStorage.setItem("ex_pending",JSON.stringify(S.pending));
-  api({action:"update_debt",id:d.id,remaining:d.remaining,payments:JSON.stringify(d.payments)}).catch(function(){});
-  // also update the original amount on the sheet by delete+re-add
-  api({action:"delete_debt",id:d.id}).then(function(){
-    return api({action:"add_debt",id:d.id,person:d.person,amount:d.amount,type:d.type,desc:d.desc,date:d.date,remaining:d.remaining,payments:JSON.stringify(d.payments)});
-  }).catch(function(){});
+  savePending();
+  syncDebtToServer(d);
 
   S.modal=null;
   S.addToDebtForm={id:"",amount:"",note:"",date:td(),applyNow:false};
@@ -1188,11 +1213,12 @@ function addToDebt(){
 function delDebt(id){
   if(!confirm("Delete this debt?"))return;
   S.pending=S.pending.filter(function(x){return x.id!==id;});
-  localStorage.setItem("ex_pending",JSON.stringify(S.pending));
+  savePending();
   api({action:"delete_debt",id:id}).catch(function(){});
-  R();toast("Deleted");
+  S.modal=null;R();toast("Deleted");
 }
 
+// ── NEW: Edit Debt ──
 function openEditDebt(id){
   var d=S.pending.find(function(x){return x.id===id;});
   if(!d)return;
@@ -1201,15 +1227,15 @@ function openEditDebt(id){
 }
 
 function saveEditDebt(){
-  var amtEl=document.querySelector('.inp-big');
-  var personEl=document.querySelector('.inp-sm[placeholder="Name"]');
-  var noteEl=document.querySelector('.inp-sm[placeholder="What for?"]');
+  var amtEl=document.getElementById('modal-amount');
+  var personEl=document.getElementById('edit-debt-person');
+  var noteEl=document.getElementById('edit-debt-note');
   if(amtEl&&amtEl.value)S.editDebtForm.amount=amtEl.value;
   if(personEl)S.editDebtForm.person=personEl.value;
   if(noteEl)S.editDebtForm.desc=noteEl.value;
   var f=S.editDebtForm;
   if(!f.amount||!f.person)return;
-  var idx=S.pending.findIndex(function(x){return x.id===f.id;});
+  var idx=findDebt(f.id);
   if(idx===-1)return;
   var d=S.pending[idx];
   var oldAmount=d.amount;
@@ -1220,11 +1246,73 @@ function saveEditDebt(){
   d.remaining=Math.max(0,d.remaining+diff);
   d.type=f.type;
   d.desc=f.desc;
-  localStorage.setItem("ex_pending",JSON.stringify(S.pending));
-  api({action:"delete_debt",id:d.id}).then(function(){
-    return api({action:"add_debt",id:d.id,person:d.person,amount:d.amount,type:d.type,desc:d.desc,date:d.date,remaining:d.remaining,payments:JSON.stringify(d.payments||[])});
-  }).catch(function(){});
+  savePending();
+  syncDebtToServer(d);
   S.modal=null;R();toast("Debt updated ✓");
+}
+
+// ── NEW: Edit/Delete individual payment entries ──
+function openEditPay(debtId,payIdx){
+  var idx=findDebt(debtId);
+  if(idx===-1)return;
+  var d=S.pending[idx];
+  var p=d.payments[payIdx];
+  if(!p)return;
+  var noteClean=(p.note||"").replace(/\s*\[.*?\]/g,"").trim();
+  S.editPayForm={debtId:debtId,payIdx:payIdx,amount:String(p.amount),note:noteClean,date:p.date||td(),isAddition:!!p.isAddition};
+  S.modal="editpay";R();
+}
+
+function saveEditPay(){
+  var amtEl=document.getElementById('modal-amount');
+  var noteEl=document.getElementById('editpay-note');
+  var dateEl=document.getElementById('editpay-date');
+  if(amtEl&&amtEl.value)S.editPayForm.amount=amtEl.value;
+  if(noteEl)S.editPayForm.note=noteEl.value;
+  if(dateEl)S.editPayForm.date=dateEl.value;
+
+  var f=S.editPayForm;
+  var idx=findDebt(f.debtId);
+  if(idx===-1)return;
+  var d=S.pending[idx];
+  var p=d.payments[f.payIdx];
+  if(!p)return;
+
+  var newAmt=num(f.amount);
+  if(newAmt<=0)return;
+  var oldAmt=num(p.amount);
+
+  p.amount=newAmt;
+  p.date=f.date;
+  p.note=f.note+(p.isAddition?"  [+added to debt]":"");
+
+  // recalculate remaining
+  recalcRemaining(d);
+
+  savePending();
+  syncDebtToServer(d);
+  S.modal=null;R();toast("Payment updated ✓");
+}
+
+function delPayEntry(debtId,payIdx){
+  if(!confirm("Delete this payment entry?"))return;
+  var idx=findDebt(debtId);
+  if(idx===-1)return;
+  var d=S.pending[idx];
+  var p=d.payments[payIdx];
+  if(!p)return;
+
+  // if it was an addition, subtract from total amount
+  if(p.isAddition){
+    d.amount=Math.max(0,d.amount-num(p.amount));
+  }
+
+  d.payments.splice(payIdx,1);
+  recalcRemaining(d);
+
+  savePending();
+  syncDebtToServer(d);
+  R();toast("Payment entry deleted");
 }
 
 // ─────────────────────────────────────────
@@ -1336,48 +1424,51 @@ function mkOcr(target){
 }
 
 // ─────────────────────────────────────────
-//  RENDER
+//  RENDER — FIX: use IDs instead of class selectors
 // ─────────────────────────────────────────
 var _rt=null;
 function R(){if(_rt)return;_rt=requestAnimationFrame(function(){_rt=null;captureForm();doRender();});}
 
 function captureForm(){
-  // read live input values from DOM before re-rendering so they aren't lost
   if(!S.modal)return;
-  var a=document.querySelector('.inp-big');
-  var d=document.querySelector('.inp-sm[type="text"]');
+  // FIX: Use unique IDs instead of ambiguous class selectors
+  var a=document.getElementById('modal-amount');
   if(S.modal==="expense"){
+    var d=document.getElementById('modal-desc');
     if(a&&a.value!=="")S.form.amount=a.value;
     if(d)S.form.desc=d.value;
   }else if(S.modal==="income"){
+    var d2=document.getElementById('modal-desc');
     if(a&&a.value!=="")S.incForm.amount=a.value;
-    if(d)S.incForm.desc=d.value;
+    if(d2)S.incForm.desc=d2.value;
   }else if(S.modal==="debt"){
-    var person=document.querySelector('.inp-sm[placeholder="Name"]');
-    var note=document.querySelector('.inp-sm[placeholder="What for?"]');
+    var person=document.getElementById('debt-person');
+    var note=document.getElementById('debt-note');
     if(a&&a.value!=="")S.debtForm.amount=a.value;
     if(person)S.debtForm.person=person.value;
     if(note)S.debtForm.desc=note.value;
   }else if(S.modal==="addtodebt"){
-    var aa=document.querySelector('.inp-big');
-    var an=document.querySelector('.inp-sm[placeholder="Note (optional)"]');
-    if(aa&&aa.value!=="")S.addToDebtForm.amount=aa.value;
+    var an=document.getElementById('add-note');
+    if(a&&a.value!=="")S.addToDebtForm.amount=a.value;
     if(an)S.addToDebtForm.note=an.value;
   }else if(S.modal==="editdebt"){
-    var eda=document.querySelector('.inp-big');
-    var edp=document.querySelector('.inp-sm[placeholder="Name"]');
-    var edn=document.querySelector('.inp-sm[placeholder="What for?"]');
-    if(eda&&eda.value!=="")S.editDebtForm.amount=eda.value;
+    var edp=document.getElementById('edit-debt-person');
+    var edn=document.getElementById('edit-debt-note');
+    if(a&&a.value!=="")S.editDebtForm.amount=a.value;
     if(edp)S.editDebtForm.person=edp.value;
     if(edn)S.editDebtForm.desc=edn.value;
   }else if(S.modal==="partial"){
-    var pa=document.querySelector('.inp-big');
-    var pn=document.querySelector('.inp-sm[placeholder="Note (optional)"]');
-    if(pa&&pa.value!=="")S.partialForm.amount=pa.value;
+    var pn=document.getElementById('pay-note');
+    if(a&&a.value!=="")S.partialForm.amount=a.value;
     if(pn)S.partialForm.note=pn.value;
+  }else if(S.modal==="editpay"){
+    var epn=document.getElementById('editpay-note');
+    if(a&&a.value!=="")S.editPayForm.amount=a.value;
+    if(epn)S.editPayForm.note=epn.value;
   }else if(S.modal==="edit"){
+    var ed=document.getElementById('modal-desc');
     if(a&&a.value!=="")S.editForm.amount=a.value;
-    if(d)S.editForm.desc=d.value;
+    if(ed)S.editForm.desc=ed.value;
   }
 }
 
@@ -1414,7 +1505,6 @@ function doRender(){
   var meE=me.filter(function(e){return e.type!=="income";});
   var meI=me.filter(function(e){return e.type==="income";});
   var mExp=tot(meE),mInc=tot(meI);
-  // month options
   var mosSet={};S.data.forEach(function(e){if(e.date)mosSet[e.date.slice(0,7)]=true;});
   var mos=Object.keys(mosSet).sort().reverse();
   if(mos.indexOf(mk())<0)mos.unshift(mk());
@@ -1426,11 +1516,10 @@ function doRender(){
     '<div class="hd-top">'+
     '<span class="hd-brand">Fulo</span>'+
     '<div class="hd-acts">'+
-    '<button class="hd-btn" onclick="toggleTheme()" title="Toggle theme" id="theme-btn">'+(S.darkMode?'☀️':'🌙')+'</button>'+
+    '<button class="hd-btn" onclick="toggleTheme()" title="Toggle theme">'+(S.darkMode?'☀️':'🌙')+'</button>'+
     '<button class="hd-btn" onclick="load()" title="Refresh">🔄</button>'+
     '</div></div>';
 
-  // balance card
   h+='<div class="bal-card">'+
     '<div class="bal-label">Total Balance</div>'+
     '<div class="bal-amount '+(bal>=0?"bal-pos":"bal-neg")+'">'+(bal>=0?"":"-")+fmt(bal)+'</div>'+
@@ -1457,14 +1546,11 @@ function doRender(){
     }).join('')+
   '</div>';
 
-  // ── CONTENT ──
   var content="";
 
   // ════════ HOME ════════
   if(S.page==="home"){
     var wd=weekData();var mx=1;wd.forEach(function(d){if(d.e>mx)mx=d.e;});
-
-    // weekly chart
     var wkH='<div class="wk">';
     wd.forEach(function(d){
       var bh=Math.max(d.e/mx*50,d.e>0?4:3);
@@ -1507,7 +1593,6 @@ function doRender(){
       '</div>';
     content+='<button class="btn btn-i" style="margin-bottom:14px;margin-top:0" onclick="S.modal=\'debt\';R()">＋ Add New Debt</button>';
 
-    // ── Balance Preview ──
     var tI2=tot(getI()),tE2=tot(getE());
     var curBal=S.openBal+tI2-tE2;
     var ifAllSettled=curBal+totOweMe-totOweThem;
@@ -1541,14 +1626,13 @@ function doRender(){
       var payments=d.payments||[];
 
       var card='<div class="debt-card '+(isCredit?"owe-me":"owe-them")+'">';
-      // header row
       card+='<div class="dc-head">'+
         '<div class="dc-left">'+
         '<div class="dc-ic">'+(isCredit?'🤝':'💸')+'</div>'+
         '<div><div class="dc-name">'+d.person+'</div>'+
         (d.desc?'<div class="dc-desc">'+d.desc+'</div>':'')+
         '</div></div>'+
-        '<div class="dc-right" style="display:flex;align-items:flex-start;gap:8px">'+
+        '<div class="dc-right">'+
         '<div style="text-align:right">'+
         '<div class="dc-remaining" style="color:'+(isCredit?"var(--green)":"var(--red)")+'">'+fmt(remaining)+'</div>'+
         '<div class="dc-orig">of '+fmt(original)+'</div>'+
@@ -1556,13 +1640,12 @@ function doRender(){
         '<button class="ed-btn" onclick="openEditDebt(\''+d.id+'\')" style="margin-top:2px">✏️</button>'+
         '</div></div>';
 
-      // progress bar
       card+='<div class="dc-prog-wrap">'+
         '<div class="dc-prog-bar"><div class="dc-prog-fill" style="width:'+pct+'%;background:'+(isCredit?"var(--green)":"var(--red)")+'"></div></div>'+
         '<div class="dc-prog-labels"><span>Paid '+fmt(paid)+'</span><span>'+pct+'%</span></div>'+
         '</div>';
 
-      // payment history
+      // payment history — now with edit/delete buttons
       if(payments.length){
         card+='<div class="dc-history">';
         payments.forEach(function(p,pi){
@@ -1578,12 +1661,13 @@ function doRender(){
               ? '<button class="dc-apply-btn" style="color:'+(isCredit?"var(--green)":"var(--red)")+'" onclick="applyPayment(\''+d.id+'\','+pi+')">'+(isCredit?"→ Inc":"→ Exp")+'</button>'
               : (p.applied?'<span style="font-size:9px;color:var(--txt3);margin-left:4px">✓</span>':'')
             )+
+            '<button class="dc-del-pay-btn" onclick="openEditPay(\''+d.id+'\','+pi+')" title="Edit">✏️</button>'+
+            '<button class="dc-del-pay-btn" onclick="delPayEntry(\''+d.id+'\','+pi+')" title="Delete">🗑</button>'+
             '</div>';
         });
         card+='</div>';
       }
 
-      // action buttons
       card+='<div class="dc-actions">'+
         '<button class="dc-btn dc-btn-add" onclick="openAddToDebt(\''+d.id+'\')" style="color:var(--blue)">＋ Add</button>'+
         '<button class="dc-btn dc-btn-pay" onclick="openPartialPay(\''+d.id+'\')">💳 Pay partial</button>'+
@@ -1619,7 +1703,7 @@ function doRender(){
     var udSet={};meE.forEach(function(e){udSet[e.date]=true;});var ud=Object.keys(udSet).length;
     var vp=S.vm.split("-");var dim=new Date(parseInt(vp[0]),parseInt(vp[1]),0).getDate();
     var net=mInc-mExp;
-    var savePct=mInc>0?Math.round((mInc-mExp)/mInc*100):0;
+    var savePctVal=mInc>0?Math.round((mInc-mExp)/mInc*100):0;
 
     content='<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 8px">'+
       '<div class="sec" style="margin:0">Monthly Report</div>'+
@@ -1629,7 +1713,7 @@ function doRender(){
       '<div class="rc-label">Net Balance — '+ml(S.vm)+'</div>'+
       '<div class="rc-big" style="color:'+(net>=0?"var(--green)":"var(--red)")+'">'+(net>=0?"+":"−")+fmt(Math.abs(net))+'</div>'+
       '<div class="rc-sub"><span style="color:var(--green)">↑ '+fmt(mInc)+'</span><span style="color:var(--red)">↓ '+fmt(mExp)+'</span></div>'+
-      '<div class="rc-meta">'+me.length+' transactions · '+ud+'/'+dim+' days · Saved '+savePct+'%</div>'+
+      '<div class="rc-meta">'+me.length+' transactions · '+ud+'/'+dim+' days · Saved '+savePctVal+'%</div>'+
       '</div>';
 
     if(incCat.length){
@@ -1742,34 +1826,31 @@ function doRender(){
       '</div>';
   }
 
-  // ── MODALS ──
+  // ── MODALS — ALL USE UNIQUE IDs NOW ──
   if(S.modal){
     var md="";
-    // ── Add Expense Modal ──
     if(S.modal==="expense"){
       md='<div class="md-h"><h3>Add Expense</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>'+
-        '<input class="inp-big exp-b" type="number" inputmode="decimal" placeholder="0.00" value="'+S.form.amount+'" oninput="S.form.amount=this.value">'+
+        '<input class="inp-big exp-b" id="modal-amount" type="number" inputmode="decimal" placeholder="0.00" value="'+S.form.amount+'">'+
         '<label class="lb">Category</label>'+mkCats(EC,S.form.cat,"S.form.cat")+
         '<label class="lb">Description</label>'+
-        '<input class="inp-sm" type="text" placeholder="What was this for?" value="'+S.form.desc+'" oninput="S.form.desc=this.value">'+
+        '<input class="inp-sm" id="modal-desc" type="text" placeholder="What was this for?" value="'+S.form.desc+'">'+
         '<label class="lb">Date</label>'+
         '<input class="inp-sm" type="date" value="'+S.form.date+'" onchange="S.form.date=this.value">'+
         mkOcr("expense")+
         '<button class="btn btn-e" onclick="addExp()">Save Expense</button>';
     }
-    // ── Add Income Modal ──
     else if(S.modal==="income"){
       md='<div class="md-h"><h3>Add Income</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>'+
-        '<input class="inp-big inc-b" type="number" inputmode="decimal" placeholder="0.00" value="'+S.incForm.amount+'" oninput="S.incForm.amount=this.value">'+
+        '<input class="inp-big inc-b" id="modal-amount" type="number" inputmode="decimal" placeholder="0.00" value="'+S.incForm.amount+'">'+
         '<label class="lb">Category</label>'+mkCats(IC,S.incForm.cat,"S.incForm.cat")+
         '<label class="lb">Description</label>'+
-        '<input class="inp-sm" type="text" placeholder="Source details…" value="'+S.incForm.desc+'" oninput="S.incForm.desc=this.value">'+
+        '<input class="inp-sm" id="modal-desc" type="text" placeholder="Source details…" value="'+S.incForm.desc+'">'+
         '<label class="lb">Date</label>'+
         '<input class="inp-sm" type="date" value="'+S.incForm.date+'" onchange="S.incForm.date=this.value">'+
         mkOcr("income")+
         '<button class="btn btn-i" onclick="addInc()">Save Income</button>';
     }
-    // ── Add Debt Modal ──
     else if(S.modal==="debt"){
       md='<div class="md-h"><h3>Log Debt</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>'+
         '<label class="lb">Type</label>'+
@@ -1778,14 +1859,13 @@ function doRender(){
         '<button class="st" style="cursor:pointer;border:2px solid '+(S.debtForm.type==="owe_them"?"var(--red)":"var(--border)")+';background:'+(S.debtForm.type==="owe_them"?"var(--red-dim)":"var(--card)")+'" onclick="S.debtForm.type=\'owe_them\';R()"><div class="sl">💸</div><div class="sv" style="font-size:12px">I owe them</div></button>'+
         '</div>'+
         '<label class="lb">Person</label>'+
-        '<input class="inp-sm" type="text" placeholder="Name" value="'+S.debtForm.person+'" oninput="S.debtForm.person=this.value">'+
+        '<input class="inp-sm" id="debt-person" type="text" placeholder="Name" value="'+S.debtForm.person+'">'+
         '<label class="lb">Amount</label>'+
-        '<input class="inp-big" type="number" inputmode="decimal" placeholder="0.00" value="'+S.debtForm.amount+'" oninput="S.debtForm.amount=this.value">'+
+        '<input class="inp-big" id="modal-amount" type="number" inputmode="decimal" placeholder="0.00" value="'+S.debtForm.amount+'">'+
         '<label class="lb">Note</label>'+
-        '<input class="inp-sm" type="text" placeholder="What for?" value="'+S.debtForm.desc+'" oninput="S.debtForm.desc=this.value">'+
+        '<input class="inp-sm" id="debt-note" type="text" placeholder="What for?" value="'+S.debtForm.desc+'">'+
         '<button class="btn btn-i" onclick="addDebt()">Save Debt</button>';
     }
-    // ── Partial Payment Modal ──
     else if(S.modal==="partial"){
       var pd=S.pending.find(function(x){return x.id===S.partialForm.id;});
       var pdRemaining=pd?num(pd.remaining!==undefined?pd.remaining:pd.amount):0;
@@ -1798,23 +1878,21 @@ function doRender(){
           '<div style="font-size:13px;font-weight:600">'+pd.person+'</div></div>';
       }
       md+='<label class="lb">Amount paid</label>'+
-        '<input class="inp-big" type="number" inputmode="decimal" placeholder="0.00" value="'+S.partialForm.amount+'">'+
+        '<input class="inp-big" id="modal-amount" type="number" inputmode="decimal" placeholder="0.00" value="'+S.partialForm.amount+'">'+
         '<label class="lb">Date</label>'+
-        '<input class="inp-sm" type="date" value="'+S.partialForm.date+'" onchange="S.partialForm.date=this.value">'+
+        '<input class="inp-sm" id="pay-date" type="date" value="'+S.partialForm.date+'">'+
         '<label class="lb">Note (optional)</label>'+
-        '<input class="inp-sm" type="text" placeholder="Note (optional)" value="'+S.partialForm.note+'">';
+        '<input class="inp-sm" id="pay-note" type="text" placeholder="Note (optional)" value="'+S.partialForm.note+'">';
 
-      // apply toggle
       var toggleColor=isCredit?"var(--green)":"var(--red)";
       var toggleLabel=isCredit?"Add to my income (main balance)":"Deduct from my expenses (main balance)";
       md+='<label style="display:flex;align-items:center;gap:10px;background:var(--bg3);border-radius:12px;padding:13px 14px;margin-top:12px;cursor:pointer">'+
-        '<input type="checkbox" id="apply-toggle" style="width:18px;height:18px;accent-color:'+toggleColor+';cursor:pointer" '+(S.partialForm.applyNow?"checked":"")+' onchange="S.partialForm.applyNow=this.checked">'+
+        '<input type="checkbox" id="apply-toggle" style="width:18px;height:18px;accent-color:'+toggleColor+';cursor:pointer" '+(S.partialForm.applyNow?"checked":"")+'>'+
         '<div><div style="font-size:13px;font-weight:600;color:'+toggleColor+'">'+toggleLabel+'</div>'+
         '<div style="font-size:10px;color:var(--txt3);margin-top:2px">Check to apply this amount to your main balance now</div></div>'+
         '</label>'+
         '<button class="btn '+(isCredit?"btn-i":"btn-e")+'" onclick="addPartialPay()">Save Payment</button>';
     }
-    // ── Add to Debt Modal ──
     else if(S.modal==="addtodebt"){
       var atd=S.pending.find(function(x){return x.id===S.addToDebtForm.id;});
       var atdIsCredit=atd&&atd.type==="owe_me";
@@ -1831,16 +1909,16 @@ function doRender(){
           '</div></div>';
       }
       md+='<label class="lb">Amount to add</label>'+
-        '<input class="inp-big" style="border-color:var(--blue)" type="number" inputmode="decimal" placeholder="0.00" value="'+S.addToDebtForm.amount+'">'+
+        '<input class="inp-big" id="modal-amount" style="border-color:var(--blue)" type="number" inputmode="decimal" placeholder="0.00" value="'+S.addToDebtForm.amount+'">'+
         '<label class="lb">Date</label>'+
-        '<input class="inp-sm" type="date" value="'+S.addToDebtForm.date+'" onchange="S.addToDebtForm.date=this.value">'+
+        '<input class="inp-sm" id="add-date" type="date" value="'+S.addToDebtForm.date+'">'+
         '<label class="lb">Note (optional)</label>'+
-        '<input class="inp-sm" type="text" placeholder="Note (optional)" value="'+S.addToDebtForm.note+'">';
+        '<input class="inp-sm" id="add-note" type="text" placeholder="Note (optional)" value="'+S.addToDebtForm.note+'">';
       var atdLabel=atdIsCredit
         ?"Deduct this amount from my balance (I gave them more)"
         :"Add this amount to my income (they gave me more)";
       md+='<label style="display:flex;align-items:center;gap:10px;background:var(--bg3);border-radius:12px;padding:13px 14px;margin-top:12px;cursor:pointer">'+
-        '<input type="checkbox" id="add-apply-toggle" style="width:18px;height:18px;accent-color:var(--blue);cursor:pointer" '+(S.addToDebtForm.applyNow?"checked":"")+' onchange="S.addToDebtForm.applyNow=this.checked">'+
+        '<input type="checkbox" id="add-apply-toggle" style="width:18px;height:18px;accent-color:var(--blue);cursor:pointer" '+(S.addToDebtForm.applyNow?"checked":"")+'>'+
         '<div><div style="font-size:13px;font-weight:600;color:var(--blue)">'+atdLabel+'</div>'+
         '<div style="font-size:10px;color:var(--txt3);margin-top:2px">Check to apply to your main balance now</div></div>'+
         '</label>'+
@@ -1856,21 +1934,39 @@ function doRender(){
         '<button class="st" style="cursor:pointer;border:2px solid '+(edf.type==="owe_them"?"var(--red)":"var(--border)")+';background:'+(edf.type==="owe_them"?"var(--red-dim)":"var(--card)")+'" onclick="S.editDebtForm.type=\'owe_them\';R()"><div class="sl">💸</div><div class="sv" style="font-size:12px">I owe them</div></button>'+
         '</div>'+
         '<label class="lb">Person</label>'+
-        '<input class="inp-sm" type="text" placeholder="Name" value="'+edf.person+'" oninput="S.editDebtForm.person=this.value">'+
+        '<input class="inp-sm" id="edit-debt-person" type="text" placeholder="Name" value="'+edf.person+'">'+
         '<label class="lb">Total Amount</label>'+
-        '<input class="inp-big" type="number" inputmode="decimal" placeholder="0.00" value="'+edf.amount+'" oninput="S.editDebtForm.amount=this.value">'+
+        '<input class="inp-big" id="modal-amount" type="number" inputmode="decimal" placeholder="0.00" value="'+edf.amount+'">'+
         '<label class="lb">Note</label>'+
-        '<input class="inp-sm" type="text" placeholder="What for?" value="'+edf.desc+'" oninput="S.editDebtForm.desc=this.value">'+
+        '<input class="inp-sm" id="edit-debt-note" type="text" placeholder="What for?" value="'+edf.desc+'">'+
         '<button class="btn btn-i" onclick="saveEditDebt()">Save Changes</button>'+
-        '<button class="btn btn-del" onclick="delDebt(\''+edf.id+'\');S.modal=null;R()">🗑 Delete Debt</button>';
+        '<button class="btn btn-del" onclick="delDebt(\''+edf.id+'\')">🗑 Delete Debt</button>';
+    }
+    // ── Edit Payment Entry Modal ──
+    else if(S.modal==="editpay"){
+      var epf=S.editPayForm;
+      var epDebt=S.pending.find(function(x){return x.id===epf.debtId;});
+      md='<div class="md-h"><h3>Edit '+(epf.isAddition?"Addition":"Payment")+'</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>';
+      if(epDebt){
+        md+='<div style="background:var(--bg3);border-radius:12px;padding:12px;margin-bottom:4px;text-align:center">'+
+          '<div style="font-size:11px;color:var(--txt3)">'+epDebt.person+'</div></div>';
+      }
+      md+='<label class="lb">Amount</label>'+
+        '<input class="inp-big" id="modal-amount" type="number" inputmode="decimal" value="'+epf.amount+'">'+
+        '<label class="lb">Date</label>'+
+        '<input class="inp-sm" id="editpay-date" type="date" value="'+epf.date+'">'+
+        '<label class="lb">Note</label>'+
+        '<input class="inp-sm" id="editpay-note" type="text" placeholder="Note (optional)" value="'+epf.note+'">'+
+        '<button class="btn btn-i" onclick="saveEditPay()">Save Changes</button>'+
+        '<button class="btn btn-del" onclick="delPayEntry(\''+epf.debtId+'\','+epf.payIdx+');S.modal=null;R()">🗑 Delete Entry</button>';
     }
     else if(S.modal==="edit"){
       var f=S.editForm;var isI=f.type==="income";
       md='<div class="md-h"><h3>Edit '+(isI?"Income":"Expense")+'</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>'+
-        '<input class="inp-big '+(isI?"inc-b":"exp-b")+'" type="number" inputmode="decimal" value="'+f.amount+'" oninput="S.editForm.amount=this.value">'+
+        '<input class="inp-big '+(isI?"inc-b":"exp-b")+'" id="modal-amount" type="number" inputmode="decimal" value="'+f.amount+'">'+
         '<label class="lb">Category</label>'+mkCats(isI?IC:EC,f.cat,"S.editForm.cat")+
         '<label class="lb">Description</label>'+
-        '<input class="inp-sm" type="text" value="'+f.desc+'" oninput="S.editForm.desc=this.value">'+
+        '<input class="inp-sm" id="modal-desc" type="text" value="'+f.desc+'">'+
         '<label class="lb">Date</label>'+
         '<input class="inp-sm" type="date" value="'+f.date+'" onchange="S.editForm.date=this.value">'+
         '<button class="btn '+(isI?"btn-i":"btn-e")+'" onclick="updEnt()">Update</button>'+
