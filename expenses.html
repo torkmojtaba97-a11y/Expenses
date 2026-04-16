@@ -216,6 +216,49 @@ button,input,select{font-family:'Nunito',sans-serif}
   margin:14px 16px 8px;
   position:relative;overflow:hidden;
   color:#fff;
+  cursor:pointer;
+  transition:transform .1s;
+}
+.bal-card:active{transform:scale(.98)}
+.bal-tap-hint{
+  position:absolute;top:12px;right:14px;
+  font-size:9px;color:rgba(255,255,255,.6);
+  letter-spacing:.5px;
+  background:rgba(255,255,255,.12);
+  padding:3px 8px;border-radius:6px;
+  pointer-events:none;
+}
+
+/* Balance history modal */
+.bh-item{
+  display:flex;align-items:center;gap:10px;
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:10px 12px;
+  margin-bottom:6px;
+}
+.bh-item.inc{border-left:3px solid var(--green)}
+.bh-item.exp{border-left:3px solid var(--red)}
+.bh-ic{
+  width:34px;height:34px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;flex-shrink:0;
+}
+.bh-info{flex:1;min-width:0}
+.bh-title{font-weight:600;font-size:12.5px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bh-meta{font-size:10px;color:var(--txt3);margin-top:2px}
+.bh-amt{font-family:'Space Grotesk',sans-serif;font-weight:800;font-size:14px;white-space:nowrap}
+.bh-delta{
+  text-align:center;padding:14px;
+  background:var(--bg3);border-radius:12px;
+  margin-bottom:12px;
+}
+.bh-delta-label{font-size:10px;color:var(--txt3);text-transform:uppercase;letter-spacing:.8px}
+.bh-delta-val{
+  font-family:'Space Grotesk',sans-serif;
+  font-size:26px;font-weight:900;
+  margin-top:4px;letter-spacing:-1px;
 }
 .bal-card::before{
   content:'';
@@ -885,7 +928,7 @@ var S={
   ocrAmounts:[],
   pending:JSON.parse(localStorage.getItem("ex_pending")||"[]"),
   darkMode:localStorage.getItem("ex_theme")==="dark",
-  partialForm:{id:"",amount:"",note:"",date:"",applyNow:false},
+  partialForm:{id:"",amount:"",note:"",date:"",applyNow:false,overpayToDebt:true},
   addToDebtForm:{id:"",amount:"",note:"",date:"",applyNow:false},
   editPayForm:{debtId:"",payIdx:-1,amount:"",note:"",date:""},
 };
@@ -1046,7 +1089,7 @@ function addDebt(){
 }
 
 function openPartialPay(id){
-  S.partialForm={id:id,amount:"",note:"",date:td(),applyNow:false};
+  S.partialForm={id:id,amount:"",note:"",date:td(),applyNow:false,overpayToDebt:true};
   S.modal="partial";R();
 }
 
@@ -1055,19 +1098,28 @@ function addPartialPay(){
   var noteEl=document.getElementById('pay-note');
   var dateEl=document.getElementById('pay-date');
   var applyEl=document.getElementById('apply-toggle');
+  var overEl=document.getElementById('overpay-toggle');
   if(amtEl&&amtEl.value)S.partialForm.amount=amtEl.value;
   if(noteEl)S.partialForm.note=noteEl.value;
   if(dateEl)S.partialForm.date=dateEl.value;
   if(applyEl)S.partialForm.applyNow=applyEl.checked;
+  if(overEl)S.partialForm.overpayToDebt=overEl.checked;
 
   var f=S.partialForm;
   if(!f.amount)return;
   var idx=findDebt(f.id);
   if(idx===-1)return;
   var d=S.pending[idx];
-  var paid=num(f.amount);
-  if(paid<=0)return;
-  if(paid>d.remaining)paid=d.remaining;
+  var paidInput=num(f.amount);
+  if(paidInput<=0)return;
+
+  // detect overpayment
+  var overpayAmount=0;
+  var paid=paidInput;
+  if(paidInput>d.remaining){
+    overpayAmount=paidInput-d.remaining;
+    paid=d.remaining;
+  }
 
   var payEntry={amount:paid,date:f.date||td(),note:f.note||"",applied:false};
 
@@ -1089,10 +1141,66 @@ function addPartialPay(){
   d.remaining=Math.max(0,d.remaining-paid);
   savePending();
   syncDebtToServer(d);
+
+  // ── handle overpayment ──
+  if(overpayAmount>0){
+    var overDate=f.date||td();
+
+    if(d.type==="owe_me"){
+      // they gave us MORE than they owed → extra income
+      var eOver={id:uid(),amount:overpayAmount,category:"other_inc",desc:"Overpayment from "+d.person+(f.note?" · "+f.note:""),date:overDate,ts:Date.now(),type:"income"};
+      S.data.push(eOver);
+      api({action:"add",id:eOver.id,amount:eOver.amount,category:eOver.category,desc:eOver.desc,date:eOver.date,type:"income"}).catch(function(){});
+
+      if(f.overpayToDebt){
+        // now I owe them the excess
+        var newDebt={
+          id:uid(),
+          person:d.person,
+          amount:overpayAmount,
+          remaining:overpayAmount,
+          type:"owe_them",
+          desc:(d.desc?d.desc+" · ":"")+"Overpayment credit",
+          date:overDate,
+          payments:[]
+        };
+        S.pending.push(newDebt);
+        api({action:"add_debt",id:newDebt.id,person:newDebt.person,amount:newDebt.amount,type:newDebt.type,desc:newDebt.desc,date:newDebt.date,remaining:newDebt.remaining,payments:"[]"}).catch(function(){});
+      }
+    }else{
+      // I gave them MORE than I owed → extra expense
+      var eOver2={id:uid(),amount:overpayAmount,category:"other",desc:"Overpayment to "+d.person+(f.note?" · "+f.note:""),date:overDate,ts:Date.now(),type:"expense"};
+      S.data.push(eOver2);
+      api({action:"add",id:eOver2.id,amount:eOver2.amount,category:eOver2.category,desc:eOver2.desc,date:eOver2.date,type:"expense"}).catch(function(){});
+
+      if(f.overpayToDebt){
+        // now they owe me the excess
+        var newDebt2={
+          id:uid(),
+          person:d.person,
+          amount:overpayAmount,
+          remaining:overpayAmount,
+          type:"owe_me",
+          desc:(d.desc?d.desc+" · ":"")+"Overpayment credit",
+          date:overDate,
+          payments:[]
+        };
+        S.pending.push(newDebt2);
+        api({action:"add_debt",id:newDebt2.id,person:newDebt2.person,amount:newDebt2.amount,type:newDebt2.type,desc:newDebt2.desc,date:newDebt2.date,remaining:newDebt2.remaining,payments:"[]"}).catch(function(){});
+      }
+    }
+
+    savePending();
+  }
+
   S.modal=null;
-  S.partialForm={id:"",amount:"",note:"",date:td(),applyNow:false};
+  S.partialForm={id:"",amount:"",note:"",date:td(),applyNow:false,overpayToDebt:true};
   R();
-  toast(f.applyNow ? fmt(paid)+" added to balance ✓" : "Payment of "+fmt(paid)+" recorded");
+  if(overpayAmount>0){
+    toast("Paid "+fmt(paid)+" + "+fmt(overpayAmount)+" overpay ✓");
+  }else{
+    toast(f.applyNow ? fmt(paid)+" added to balance ✓" : "Payment of "+fmt(paid)+" recorded");
+  }
 }
 
 // ── FIX: applyPayment direction was wrong for owe_me ──
@@ -1520,7 +1628,8 @@ function doRender(){
     '<button class="hd-btn" onclick="load()" title="Refresh">🔄</button>'+
     '</div></div>';
 
-  h+='<div class="bal-card">'+
+  h+='<div class="bal-card" onclick="S.modal=\'balance_history\';R()">'+
+    '<div class="bal-tap-hint">tap for history</div>'+
     '<div class="bal-label">Total Balance</div>'+
     '<div class="bal-amount '+(bal>=0?"bal-pos":"bal-neg")+'">'+(bal>=0?"":"-")+fmt(bal)+'</div>'+
     '<div class="bal-stats">'+
@@ -1879,6 +1988,7 @@ function doRender(){
       }
       md+='<label class="lb">Amount paid</label>'+
         '<input class="inp-big" id="modal-amount" type="number" inputmode="decimal" placeholder="0.00" value="'+S.partialForm.amount+'">'+
+        '<div style="font-size:10px;color:var(--txt3);margin-top:6px;padding:0 4px;line-height:1.5">💡 If you enter more than '+fmt(pdRemaining)+', the excess will be tracked as a reverse debt automatically.</div>'+
         '<label class="lb">Date</label>'+
         '<input class="inp-sm" id="pay-date" type="date" value="'+S.partialForm.date+'">'+
         '<label class="lb">Note (optional)</label>'+
@@ -1890,6 +2000,16 @@ function doRender(){
         '<input type="checkbox" id="apply-toggle" style="width:18px;height:18px;accent-color:'+toggleColor+';cursor:pointer" '+(S.partialForm.applyNow?"checked":"")+'>'+
         '<div><div style="font-size:13px;font-weight:600;color:'+toggleColor+'">'+toggleLabel+'</div>'+
         '<div style="font-size:10px;color:var(--txt3);margin-top:2px">Check to apply this amount to your main balance now</div></div>'+
+        '</label>';
+
+      // overpayment toggle
+      var overLabel=isCredit
+        ?"If overpaid, auto-create an 'I owe them' debt for the excess"
+        :"If overpaid, auto-create a 'They owe me' debt for the excess";
+      md+='<label style="display:flex;align-items:center;gap:10px;background:var(--bg3);border-radius:12px;padding:13px 14px;margin-top:8px;cursor:pointer">'+
+        '<input type="checkbox" id="overpay-toggle" style="width:18px;height:18px;accent-color:var(--blue);cursor:pointer" '+(S.partialForm.overpayToDebt!==false?"checked":"")+'>'+
+        '<div><div style="font-size:13px;font-weight:600;color:var(--blue)">🔁 Track overpayment as reverse debt</div>'+
+        '<div style="font-size:10px;color:var(--txt3);margin-top:2px">'+overLabel+'</div></div>'+
         '</label>'+
         '<button class="btn '+(isCredit?"btn-i":"btn-e")+'" onclick="addPartialPay()">Save Payment</button>';
     }
@@ -1959,6 +2079,48 @@ function doRender(){
         '<input class="inp-sm" id="editpay-note" type="text" placeholder="Note (optional)" value="'+epf.note+'">'+
         '<button class="btn btn-i" onclick="saveEditPay()">Save Changes</button>'+
         '<button class="btn btn-del" onclick="delPayEntry(\''+epf.debtId+'\','+epf.payIdx+');S.modal=null;R()">🗑 Delete Entry</button>';
+    }
+    else if(S.modal==="balance_history"){
+      // last 10 entries affecting balance, newest first
+      var recent=S.data.slice().sort(function(a,b){
+        var ta=a.ts||0,tb=b.ts||0;
+        if(tb!==ta)return tb-ta;
+        return (b.date||"").localeCompare(a.date||"");
+      }).slice(0,10);
+
+      var netDelta=0;
+      recent.forEach(function(e){
+        if(e.type==="income")netDelta+=num(e.amount);
+        else netDelta-=num(e.amount);
+      });
+
+      md='<div class="md-h"><h3>Balance History</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>';
+
+      md+='<div class="bh-delta">'+
+        '<div class="bh-delta-label">Net change — last '+recent.length+' '+(recent.length===1?"entry":"entries")+'</div>'+
+        '<div class="bh-delta-val" style="color:'+(netDelta>=0?"var(--green)":"var(--red)")+'">'+
+        (netDelta>=0?"+":"−")+fmt(Math.abs(netDelta))+'</div>'+
+        '</div>';
+
+      if(!recent.length){
+        md+='<div class="empty"><span>📋</span>No transactions yet</div>';
+      }else{
+        md+='<label class="lb">Recent changes (newest first)</label>';
+        recent.forEach(function(e){
+          var isI=e.type==="income";
+          var c=gc(e.category);
+          var timeStr=ts2t(e.ts);
+          md+='<div class="bh-item '+(isI?"inc":"exp")+'">'+
+            '<div class="bh-ic" style="background:'+c.c+'20">'+c.i+'</div>'+
+            '<div class="bh-info">'+
+            '<div class="bh-title">'+(e.desc||c.l)+'</div>'+
+            '<div class="bh-meta">'+c.l+' · '+e.date+(timeStr?' · '+timeStr:'')+'</div>'+
+            '</div>'+
+            '<div class="bh-amt '+(isI?"am-g":"am-r")+'">'+(isI?"+":"−")+fmt(e.amount)+'</div>'+
+            '</div>';
+        });
+      }
+      md+='<button class="btn btn-neutral" onclick="S.modal=null;R()">Close</button>';
     }
     else if(S.modal==="edit"){
       var f=S.editForm;var isI=f.type==="income";
