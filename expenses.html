@@ -10,9 +10,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
 /* ── LIGHT MODE (default) ── */
 :root{
@@ -711,33 +708,6 @@ button,input,select{font-family:'Nunito',sans-serif}
   margin-top:8px;
 }
 
-/* ── OCR ── */
-.rcpt-btn{
-  display:flex;align-items:center;justify-content:center;
-  gap:8px;width:100%;padding:12px;
-  border:2px dashed var(--border2);
-  border-radius:12px;background:var(--bg3);
-  cursor:pointer;font-size:12px;font-weight:500;
-  color:var(--txt2);margin-top:10px;
-  transition:border-color .2s;
-}
-.rcpt-btn:active{border-color:var(--green)}
-.rcpt-st{font-size:10px;color:var(--txt3);text-align:center;margin-top:6px}
-.rcpt-found{
-  background:var(--green-dim);
-  border:1px solid rgba(0,229,160,.2);
-  border-radius:10px;padding:10px;
-  margin-top:8px;text-align:center;
-}
-.rfl{font-size:9px;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;font-weight:700}
-.rfa{display:flex;flex-wrap:wrap;gap:4px;justify-content:center}
-.rfa button{
-  background:rgba(0,229,160,.15);
-  padding:5px 12px;border-radius:8px;
-  font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:800;
-  color:var(--green);cursor:pointer;border:1px solid rgba(0,229,160,.2);
-}
-
 /* ── SYNC INDICATOR ── */
 .sync-bar{
   position:fixed;top:0;left:50%;transform:translateX(-50%);
@@ -953,8 +923,6 @@ var S={
   drFrom:"",drTo:"",
   openBal:num(localStorage.getItem("ex_openbal")),
   showScript:false,
-  ocrStatus:"",
-  ocrAmounts:[],
   pending:JSON.parse(localStorage.getItem("ex_pending")||"[]"),
   darkMode:localStorage.getItem("ex_theme")==="dark",
   partialForm:{id:"",amount:"",note:"",date:"",applyNow:false},
@@ -1075,7 +1043,7 @@ function addExp(){
   var e={id:uid(),amount:num(S.form.amount),category:S.form.cat,desc:S.form.desc,date:S.form.date,ts:Date.now(),type:typ,pm:pm,gl_debit:glDebit,gl_credit:glCredit};
   S.data.push(e);
   S.form={amount:"",cat:"grocery",desc:"",date:td(),pm:"cash"};
-  S.modal=null;S.ocrAmounts=[];S.ocrStatus="";
+  S.modal=null;
   R();toast(isCC?"CC charge added ✓":"Expense added ✓");
   api({action:"add",id:e.id,amount:e.amount,category:e.category,desc:e.desc,date:e.date,type:typ,pm:pm,gl_debit:glDebit,gl_credit:glCredit}).catch(function(){});
 }
@@ -1088,7 +1056,7 @@ function addInc(){
   var e={id:uid(),amount:num(S.incForm.amount),category:S.incForm.cat,desc:S.incForm.desc,date:S.incForm.date,ts:Date.now(),type:"income"};
   S.data.push(e);
   S.incForm={amount:"",cat:"salary",desc:"",date:td()};
-  S.modal=null;S.ocrAmounts=[];S.ocrStatus="";
+  S.modal=null;
   R();toast("Income added ✓");
   api({action:"add",id:e.id,amount:e.amount,category:e.category,desc:e.desc,date:e.date,type:"income"}).catch(function(){});
 }
@@ -1493,59 +1461,6 @@ function delPayEntry(debtId,payIdx){
 }
 
 // ─────────────────────────────────────────
-//  OCR
-// ─────────────────────────────────────────
-var _cropper=null;
-function scanReceipt(input,target){
-  if(!input.files||!input.files[0])return;
-  var reader=new FileReader();
-  reader.onload=function(e){
-    var modal=document.createElement("div");
-    modal.id="ocr-modal";
-    modal.setAttribute("style","position:fixed;top:0;left:0;width:100%;height:100%;background:#000;z-index:99999;display:flex;flex-direction:column;font-family:'Nunito',sans-serif;");
-    modal.innerHTML='<div style="background:#0d1420;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1f2e45;color:#e8f0fe;"><button id="ocr-cancel" style="color:#ff5c7a;background:none;border:none;font-size:15px;font-weight:700;padding:6px 10px;cursor:pointer;">Cancel</button><span style="font-size:13px;font-weight:600;">Crop the amount area</span><button id="ocr-done" style="color:#00e5a0;background:none;border:none;font-size:15px;font-weight:700;padding:6px 10px;cursor:pointer;">Scan ✓</button></div><div style="flex:1;position:relative;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img id="crop-target" src="'+e.target.result+'" style="max-width:100%;max-height:100%;"></div>';
-    document.body.appendChild(modal);
-    var img=document.getElementById("crop-target");
-    _cropper=new Cropper(img,{viewMode:1,dragMode:"move",autoCropArea:.6,responsive:true,checkOrientation:true});
-    document.getElementById("ocr-done").onclick=function(){
-      var canvas=_cropper.getCroppedCanvas({width:1200});
-      var dataUrl=canvas.toDataURL("image/jpeg",.85);
-      closeOcrModal();startOcr(dataUrl,target);
-    };
-    document.getElementById("ocr-cancel").onclick=closeOcrModal;
-  };
-  reader.readAsDataURL(input.files[0]);
-}
-function closeOcrModal(){
-  if(_cropper){_cropper.destroy();_cropper=null;}
-  var m=document.getElementById("ocr-modal");
-  if(m)m.parentNode.removeChild(m);
-}
-function startOcr(base64,target){
-  S.ocrStatus="Scanning…";S.ocrAmounts=[];R();
-  Tesseract.recognize(base64,"eng",{
-    tessedit_char_whitelist:"0123456789",
-    logger:function(m){
-      if(m.status==="recognizing text"){S.ocrStatus="Progress "+Math.round(m.progress*100)+"%";R();}
-    }
-  }).then(function(res){
-    var digits=res.data.text.replace(/[^0-9]/g,"");
-    if(digits.length>=3){
-      var amount=parseFloat(digits.slice(0,-2)+"."+digits.slice(-2));
-      S.ocrAmounts=[amount];S.ocrStatus="Found amount!";
-    }else{
-      S.ocrStatus="Crop tighter and retry";
-    }
-    R();
-  }).catch(function(){S.ocrStatus="Scan failed";R();});
-}
-function pickOcr(val,target){
-  if(target==="expense")S.form.amount=String(val);
-  else S.incForm.amount=String(val);
-  R();
-}
-
-// ─────────────────────────────────────────
 //  ANALYTICS HELPERS
 // ─────────────────────────────────────────
 function lastDep(){
@@ -1596,19 +1511,6 @@ function mkCats(list,sel,path){
   }
   return h+'</div>';
 }
-function mkOcr(target){
-  var h='<label class="rcpt-btn"><input type="file" accept="image/*" capture="environment" style="display:none" onchange="scanReceipt(this,\''+target+'\')">📷 Scan Receipt</label>';
-  if(S.ocrStatus)h+='<div class="rcpt-st">'+S.ocrStatus+'</div>';
-  if(S.ocrAmounts.length){
-    h+='<div class="rcpt-found"><div class="rfl">✓ Amount detected — tap to use</div><div class="rfa">';
-    for(var i=0;i<S.ocrAmounts.length;i++){
-      h+='<button onclick="pickOcr('+S.ocrAmounts[i]+',\''+target+'\')">'+fmt(S.ocrAmounts[i])+'</button>';
-    }
-    h+='</div></div>';
-  }
-  return h;
-}
-
 // ─────────────────────────────────────────
 //  RENDER — FIX: use IDs instead of class selectors
 // ─────────────────────────────────────────
@@ -2108,7 +2010,6 @@ function doRender(){
         '<input class="inp-sm" id="modal-desc" type="text" placeholder="What was this for?" value="'+S.form.desc+'">'+
         '<label class="lb">Date</label>'+
         '<input class="inp-sm" type="date" value="'+S.form.date+'" onchange="S.form.date=this.value">'+
-        mkOcr("expense")+
         '<button class="btn '+btnClass+'" onclick="addExp()">'+(S.form.pm==="credit"?"Save CC Charge":"Save Expense")+'</button>';
     }
     else if(S.modal==="income"){
@@ -2119,7 +2020,6 @@ function doRender(){
         '<input class="inp-sm" id="modal-desc" type="text" placeholder="Source details…" value="'+S.incForm.desc+'">'+
         '<label class="lb">Date</label>'+
         '<input class="inp-sm" type="date" value="'+S.incForm.date+'" onchange="S.incForm.date=this.value">'+
-        mkOcr("income")+
         '<button class="btn btn-i" onclick="addInc()">Save Income</button>';
     }
     // ── Pay CC Bill Modal ──
