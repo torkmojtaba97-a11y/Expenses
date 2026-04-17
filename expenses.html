@@ -220,7 +220,10 @@ button,input,select{font-family:'Nunito',sans-serif}
   margin:14px 16px 8px;
   position:relative;overflow:hidden;
   color:#fff;
+  cursor:pointer;
+  transition:transform .1s;
 }
+.bal-card:active{transform:scale(.98)}
 .bal-card::before{
   content:'';
   position:absolute;top:-40px;right:-40px;
@@ -810,11 +813,7 @@ button,input,select{font-family:'Nunito',sans-serif}
 }
 .cc-charge-item:last-child{border-bottom:none}
 
-/* Balance card clickable */
-.bal-card{
-  cursor:pointer;transition:transform .1s;
-}
-.bal-card:active{transform:scale(.98)}
+/* Balance card tap hint */
 .bal-tap-hint{
   position:absolute;top:12px;right:14px;
   font-size:9px;color:rgba(255,255,255,.55);
@@ -1101,7 +1100,8 @@ function payCCBill(){
   var amt=num(f.amount);
   if(amt<=0)return;
   var liability=ccLiability();
-  if(amt>liability)amt=liability;
+  if(liability<=0){toast("No CC liability to pay");return;}
+  if(amt>liability){amt=liability;toast("Capped to liability "+fmt(liability));}
   // cc_payment: Cash ↓, Liability ↓, NO new expense
   var e={id:uid(),amount:amt,category:"cc_payment",desc:"CC bill payment",date:f.date||td(),ts:Date.now(),type:"cc_payment",pm:"cash",gl_debit:"2000",gl_credit:"1000"};
   S.data.push(e);
@@ -1119,9 +1119,10 @@ function updEnt(){
   // determine correct type based on pm
   var pm=f.pm||"cash";
   var isIncome=f.type==="income";
-  var actualType=isIncome?"income":(pm==="credit"&&S.ccEnabled?"cc_charge":"expense");
-  var glDebit=isIncome?"1000":(f.cat==="grocery"?"5000":f.cat==="food"?"5010":f.cat==="transport"?"5020":f.cat==="bills"?"5030":f.cat==="health"?"5040":f.cat==="clothes"?"5050":f.cat==="fun"?"5060":f.cat==="home"?"5070":"5090");
-  var glCredit=isIncome?(f.cat==="salary"?"4000":f.cat==="commission"?"4010":f.cat==="freelance"?"4010":"4020"):(pm==="credit"&&S.ccEnabled?"2000":"1000");
+  var isCCpay=f.type==="cc_payment";
+  var actualType=isCCpay?"cc_payment":isIncome?"income":(pm==="credit"&&S.ccEnabled?"cc_charge":"expense");
+  var glDebit=isCCpay?"2000":isIncome?"1000":(f.cat==="grocery"?"5000":f.cat==="food"?"5010":f.cat==="transport"?"5020":f.cat==="bills"?"5030":f.cat==="health"?"5040":f.cat==="clothes"?"5050":f.cat==="fun"?"5060":f.cat==="home"?"5070":"5090");
+  var glCredit=isCCpay?"1000":isIncome?(f.cat==="salary"?"4000":f.cat==="commission"?"4010":f.cat==="freelance"?"4010":"4020"):(pm==="credit"&&S.ccEnabled?"2000":"1000");
   if(isIncome){glDebit="1000";}
   for(var i=0;i<S.data.length;i++){
     if(S.data[i].id===f.id){
@@ -1669,7 +1670,7 @@ function doRender(){
     '<div class="bal-stats">';
   if(S.ccEnabled){
     h+='<div class="bal-stat"><div class="bs-label">Cash</div><div class="bs-val bs-g">'+fmt(cash)+'</div></div>'+
-    '<div class="bal-stat"><div class="bs-label">CC Liability</div><div class="bs-val bs-r">'+fmt(ccLiab)+'</div></div>'+
+    '<div class="bal-stat"><div class="bs-label">CC Liability</div><div class="bs-val" style="color:#d8b4fe">'+fmt(ccLiab)+'</div></div>'+
     '</div>'+
     '<div class="bal-stats" style="margin-top:6px">'+
     '<div class="bal-stat"><div class="bs-label">Total Income</div><div class="bs-val bs-g">'+fmt(tI)+'</div></div>'+
@@ -1724,24 +1725,30 @@ function doRender(){
       '<div class="chart-card">'+wkH+'</div>';
 
     // CC Widget on home (if enabled)
-    if(S.ccEnabled&&ccLiab>0){
-      var unpaidCC=getCCcharges().filter(function(c){return true;}).sort(function(a,b){return(b.ts||0)-(a.ts||0);}).slice(0,5);
-      content+='<div class="sec">💳 Credit Card</div>'+
-        '<div class="cc-summary">'+
-        '<div class="cc-sum-head"><div><div class="cc-sum-label">Outstanding Liability</div><div class="cc-sum-val">'+fmt(ccLiab)+'</div></div>'+
-        '<button class="btn" style="width:auto;margin:0;padding:8px 16px;font-size:11px;background:var(--purple);color:#fff" onclick="S.ccPayForm={amount:String('+ccLiab+'),date:td()};S.modal=\'ccpay\';R()">Pay Bill</button></div>';
-      if(unpaidCC.length){
-        content+='<div style="font-size:10px;color:var(--txt3);margin-bottom:6px">Recent CC charges:</div>';
-        unpaidCC.forEach(function(c){
-          var cat=gc(c.category);
-          content+='<div class="cc-charge-item">'+
-            '<span>'+cat.i+'</span>'+
-            '<span style="flex:1;color:var(--txt)">'+(c.desc||cat.l)+'</span>'+
-            '<span style="color:var(--txt3)">'+c.date+'</span>'+
-            '<span style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;color:var(--purple)">'+fmt(c.amount)+'</span></div>';
-        });
+    if(S.ccEnabled){
+      var unpaidCC=getCCcharges().sort(function(a,b){return(b.ts||0)-(a.ts||0);}).slice(0,5);
+      content+='<div class="sec">💳 Credit Card</div>';
+      if(ccLiab>0){
+        content+='<div class="cc-summary">'+
+          '<div class="cc-sum-head"><div><div class="cc-sum-label">Outstanding Liability</div><div class="cc-sum-val">'+fmt(ccLiab)+'</div></div>'+
+          '<button class="btn" style="width:auto;margin:0;padding:8px 16px;font-size:11px;background:var(--purple);color:#fff" onclick="S.ccPayForm={amount:String('+ccLiab+'),date:td()};S.modal=\'ccpay\';R()">Pay Bill</button></div>';
+        if(unpaidCC.length){
+          content+='<div style="font-size:10px;color:var(--txt3);margin-bottom:6px">Recent CC charges:</div>';
+          unpaidCC.forEach(function(c){
+            var cat=gc(c.category);
+            content+='<div class="cc-charge-item">'+
+              '<span>'+cat.i+'</span>'+
+              '<span style="flex:1;color:var(--txt)">'+(c.desc||cat.l)+'</span>'+
+              '<span style="color:var(--txt3)">'+c.date+'</span>'+
+              '<span style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;color:var(--purple)">'+fmt(c.amount)+'</span></div>';
+          });
+        }
+        content+='</div>';
+      }else{
+        content+='<div class="cc-summary" style="border-left-color:var(--green);text-align:center;padding:18px">'+
+          '<span style="font-size:24px">✨</span><div style="font-size:13px;font-weight:700;color:var(--green);margin-top:6px">All clear!</div>'+
+          '<div style="font-size:11px;color:var(--txt3);margin-top:4px">No outstanding credit card charges</div></div>';
       }
-      content+='</div>';
     }
 
     content+='<div class="sec">This Month — '+ml(mk())+'</div>'+
@@ -2008,7 +2015,7 @@ function doRender(){
       '<span style="position:absolute;top:3px;left:'+(S.ccEnabled?"24px":"3px")+';width:22px;height:22px;background:var(--card);border-radius:50%;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></span>'+
       '</label></div>'+
       '</div>'+
-      '<div class="version-tag">Fulo v3.0 · Built with ❤️</div>';
+      '<div class="version-tag">Fulo v3.1 · Built with ❤️</div>';
   }
 
   // ── FULL RENDER ──
@@ -2093,8 +2100,7 @@ function doRender(){
       var netDelta=0;
       recent.forEach(function(e){
         if(e.type==="income")netDelta+=num(e.amount);
-        else if(e.type==="expense"||e.type==="cc_payment")netDelta-=num(e.amount);
-        // cc_charge doesn't affect cash directly
+        else if(e.type==="expense"||e.type==="cc_charge"||e.type==="cc_payment")netDelta-=num(e.amount);
       });
       md='<div class="md-h"><h3>Balance History</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>';
       md+='<div class="bh-delta">'+
