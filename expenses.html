@@ -197,7 +197,30 @@ button,input,select{font-family:'Nunito',sans-serif}
   font-size:20px;font-weight:900;
   color:var(--blue);
 }
-.hd-acts{display:flex;gap:6px}
+.status-badge{
+  font-size:10px;font-weight:700;
+  padding:4px 9px;border-radius:10px;
+  margin-left:8px;
+  letter-spacing:.3px;
+  white-space:nowrap;
+  align-self:center;
+}
+.offline-badge{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,92,122,.25)}
+.queue-badge{background:var(--purple-dim);color:var(--purple);border:1px solid rgba(139,92,246,.25);animation:pulseBadge 2s infinite}
+@keyframes pulseBadge{0%,100%{opacity:.85}50%{opacity:1}}
+.hd-top .hd-brand{flex:0 0 auto}
+.hd-top{flex-wrap:nowrap}
+.form-err{
+  background:var(--red-dim);
+  border:1px solid rgba(255,92,122,.25);
+  color:var(--red);
+  font-size:11px;font-weight:600;
+  padding:9px 12px;border-radius:10px;
+  margin-top:8px;
+  display:flex;align-items:center;gap:6px;
+}
+.form-err::before{content:"⚠";font-size:12px}
+.hd-acts{display:flex;gap:6px;margin-left:auto}
 .hd-btn{
   background:var(--card);
   border:1px solid var(--border);
@@ -856,7 +879,7 @@ var IC=[
 var MN=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 var DN=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
-var SCRIPT='function doGet(e){return handle(e)}\nfunction doPost(e){return handle(e)}\nfunction handle(e){\n  var ss=SpreadsheetApp.getActiveSpreadsheet();\n  var sh=ss.getSheetByName("Expenses")||ss.insertSheet("Expenses");\n  if(sh.getLastRow()===0)\n    sh.appendRow(["ID","Amount","Category","Desc","Date","Timestamp","Type"]);\n  var p=e.parameter,res={};\n  if(p.action==="get"){\n    var d=sh.getDataRange().getValues(),out=[];\n    for(var i=1;i<d.length;i++){\n      if(d[i][0])out.push({id:d[i][0],amount:d[i][1],category:d[i][2],\n        desc:d[i][3],date:d[i][4],ts:d[i][5],type:d[i][6]||"expense"});\n    }\n    res={ok:true,data:out};\n  }else if(p.action==="add"){\n    sh.appendRow([p.id,parseFloat(p.amount),p.category,\n      p.desc||"",p.date,Date.now(),p.type||"expense"]);\n    res={ok:true};\n  }else if(p.action==="delete"){\n    var rows=sh.getDataRange().getValues();\n    for(var i=1;i<rows.length;i++){\n      if(rows[i][0]===p.id){sh.deleteRow(i+1);break}\n    }\n    res={ok:true};\n  }\n  return ContentService.createTextOutput(\n    JSON.stringify(res)).setMimeType(ContentService.MimeType.JSON);\n}';
+var SCRIPT='// ── Fulo Sync — set your token below ──\nvar TOKEN="CHANGE_ME_TO_A_LONG_RANDOM_STRING";\n\nfunction doGet(e){return handle(e)}\nfunction doPost(e){return handle(e)}\nfunction out(o){return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON)}\n\nfunction handle(e){\n  var p=(e&&e.parameter)||{};\n  if(!p.token||p.token!==TOKEN)return out({ok:false,error:"unauthorized"});\n\n  var ss=SpreadsheetApp.getActiveSpreadsheet();\n  var sh=ss.getSheetByName("Expenses")||ss.insertSheet("Expenses");\n  if(sh.getLastRow()===0)\n    sh.appendRow(["ID","Amount","Category","Desc","Date","Timestamp","Type","PM","GLDebit","GLCredit"]);\n  var dsh=ss.getSheetByName("Debts")||ss.insertSheet("Debts");\n  if(dsh.getLastRow()===0)\n    dsh.appendRow(["ID","Person","Amount","Type","Desc","Date","Remaining","Payments"]);\n\n  try{\n    if(p.action==="get"){\n      var d=sh.getDataRange().getValues(),tx=[];\n      for(var i=1;i<d.length;i++){\n        if(d[i][0])tx.push({id:d[i][0],amount:d[i][1],category:d[i][2],desc:d[i][3],date:d[i][4],ts:d[i][5],type:d[i][6]||"expense",pm:d[i][7]||"",gl_debit:d[i][8]||"",gl_credit:d[i][9]||""});\n      }\n      var dd=dsh.getDataRange().getValues(),dbt=[];\n      for(var j=1;j<dd.length;j++){\n        if(dd[j][0]){\n          var pays=[];try{pays=JSON.parse(dd[j][7]||"[]")}catch(err){pays=[]}\n          dbt.push({id:dd[j][0],person:dd[j][1],amount:parseFloat(dd[j][2])||0,type:dd[j][3],desc:dd[j][4]||"",date:dd[j][5],remaining:parseFloat(dd[j][6])||0,payments:pays});\n        }\n      }\n      return out({ok:true,data:tx,pending:dbt});\n    }\n    if(p.action==="add"){\n      sh.appendRow([p.id,parseFloat(p.amount),p.category,p.desc||"",p.date,Date.now(),p.type||"expense",p.pm||"",p.gl_debit||"",p.gl_credit||""]);\n      return out({ok:true});\n    }\n    if(p.action==="delete"){\n      var rows=sh.getDataRange().getValues();\n      for(var k=1;k<rows.length;k++){if(rows[k][0]===p.id){sh.deleteRow(k+1);break}}\n      return out({ok:true});\n    }\n    if(p.action==="add_debt"){\n      dsh.appendRow([p.id,p.person,parseFloat(p.amount),p.type,p.desc||"",p.date,parseFloat(p.remaining||p.amount),p.payments||"[]"]);\n      return out({ok:true});\n    }\n    if(p.action==="delete_debt"){\n      var drows=dsh.getDataRange().getValues();\n      for(var m=1;m<drows.length;m++){if(drows[m][0]===p.id){dsh.deleteRow(m+1);break}}\n      return out({ok:true});\n    }\n    if(p.action==="reset_all"){\n      if(sh.getLastRow()>1)sh.getRange(2,1,sh.getLastRow()-1,sh.getLastColumn()).clearContent();\n      if(dsh.getLastRow()>1)dsh.getRange(2,1,dsh.getLastRow()-1,dsh.getLastColumn()).clearContent();\n      return out({ok:true});\n    }\n    return out({ok:false,error:"unknown action"});\n  }catch(err){return out({ok:false,error:String(err)})}\n}';
 
 // ─────────────────────────────────────────
 //  HELPERS
@@ -868,11 +891,54 @@ function ml(k){var p=k.split("-");return MN[parseInt(p[1])-1]+" "+p[0];}
 function gc(id){var a=EC.concat(IC);for(var i=0;i<a.length;i++){if(a[i].id===id)return a[i];}return EC[8];}
 function num(v){var n=parseFloat(v);return isNaN(n)?0:n;}
 function ts2t(ts){if(!ts)return"";var d=new Date(typeof ts==="number"?ts:parseInt(ts));if(isNaN(d.getTime()))return"";return d.getHours().toString().padStart(2,"0")+":"+d.getMinutes().toString().padStart(2,"0");}
-function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,5);}
+function uid(){
+  if(typeof crypto!=="undefined"&&crypto.randomUUID){return crypto.randomUUID();}
+  // fallback: high-entropy (ts + 3 random segments)
+  return Date.now().toString(36)+"-"+
+    Math.random().toString(36).slice(2,10)+"-"+
+    Math.random().toString(36).slice(2,10);
+}
 function toast(msg,dur){
   var el=document.getElementById("toast");
   if(!el)return;el.textContent=msg;el.classList.add("show");
   setTimeout(function(){el.classList.remove("show");},dur||2000);
+}
+// Robust copy — works on HTTP, old browsers, iOS Safari, etc.
+function copyScript(btn){
+  var text=SCRIPT;
+  var done=function(){
+    if(btn){btn.textContent="✓ Copied!";setTimeout(function(){btn.textContent="Copy";},1800);}
+    toast("Copied to clipboard ✓");
+  };
+  var fail=function(){
+    // last resort: show prompt so user can copy manually
+    try{window.prompt("Copy the code below (Ctrl+C / Cmd+C):",text);}catch(e){}
+    toast("Select and copy manually");
+  };
+  // Try modern API first (needs HTTPS or localhost)
+  if(navigator.clipboard&&window.isSecureContext){
+    navigator.clipboard.writeText(text).then(done).catch(function(){legacyCopy(text,done,fail);});
+  }else{
+    legacyCopy(text,done,fail);
+  }
+}
+function legacyCopy(text,done,fail){
+  try{
+    var ta=document.createElement("textarea");
+    ta.value=text;
+    ta.setAttribute("readonly","");
+    ta.style.position="fixed";
+    ta.style.top="0";ta.style.left="0";
+    ta.style.opacity="0";
+    document.body.appendChild(ta);
+    // iOS needs this
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0,text.length);
+    var ok=document.execCommand("copy");
+    document.body.removeChild(ta);
+    if(ok)done();else fail();
+  }catch(e){fail();}
 }
 // deep clone helper to avoid reference issues
 function clone(o){return JSON.parse(JSON.stringify(o));}
@@ -882,9 +948,9 @@ function findDebt(id){
   return -1;
 }
 function syncDebtToServer(d){
-  api({action:"delete_debt",id:d.id}).then(function(){
-    return api({action:"add_debt",id:d.id,person:d.person,amount:d.amount,type:d.type,desc:d.desc||"",date:d.date,remaining:d.remaining,payments:JSON.stringify(d.payments||[])});
-  }).catch(function(){});
+  // both calls get queued; queue preserves order
+  api({action:"delete_debt",id:d.id});
+  api({action:"add_debt",id:d.id,person:d.person,amount:d.amount,type:d.type,desc:d.desc||"",date:d.date,remaining:d.remaining,payments:JSON.stringify(d.payments||[])});
 }
 // recalculate remaining from payments
 function recalcRemaining(d){
@@ -904,7 +970,11 @@ function recalcRemaining(d){
 // ─────────────────────────────────────────
 var S={
   url:localStorage.getItem("ex_url")||"",
+  token:localStorage.getItem("ex_token")||"",
   connected:false,
+  online:navigator.onLine,
+  syncQueue:JSON.parse(localStorage.getItem("ex_syncq")||"[]"),
+  queueProcessing:false,
   data:[],
   page:"home",
   modal:null,
@@ -918,6 +988,7 @@ var S={
   ccEnabled:localStorage.getItem("ex_cc_on")==="true",
   status:"",
   syncing:false,
+  formError:"",
   search:"",
   fcat:"all",
   drFrom:"",drTo:"",
@@ -984,12 +1055,112 @@ function saveCCCards(){localStorage.setItem("ex_cc",JSON.stringify(S.ccCards));}
 function tot(arr){var s=0;for(var i=0;i<arr.length;i++)s+=num(arr[i].amount);return s;}
 
 // ─────────────────────────────────────────
-//  API
+//  VALIDATION
 // ─────────────────────────────────────────
-function api(p){
-  var q=new URLSearchParams(p).toString();
-  return fetch(S.url+"?"+q).then(function(r){return r.json();});
+function validAmount(v){
+  var n=parseFloat(v);
+  if(isNaN(n))return "Please enter a valid number";
+  if(n<=0)return "Amount must be greater than zero";
+  if(n>1000000000)return "Amount is too large";
+  return null;
 }
+function validDate(d){
+  if(!d)return "Date is required";
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d))return "Invalid date format";
+  var dt=new Date(d);
+  if(isNaN(dt.getTime()))return "Invalid date";
+  var today=new Date();today.setHours(23,59,59,999);
+  if(dt>today)return "Date cannot be in the future";
+  var min=new Date("2000-01-01");
+  if(dt<min)return "Date is too old (before 2000)";
+  return null;
+}
+function validText(v,max){
+  if(v&&v.length>(max||200))return "Text is too long (max "+(max||200)+" chars)";
+  return null;
+}
+
+// ─────────────────────────────────────────
+//  API + OFFLINE QUEUE
+// ─────────────────────────────────────────
+function saveQueue(){localStorage.setItem("ex_syncq",JSON.stringify(S.syncQueue));}
+function queueCount(){return S.syncQueue.length;}
+
+// low-level fetch (no queueing)
+function rawApi(p){
+  var params=Object.assign({},p,{token:S.token||""});
+  var q=new URLSearchParams(params).toString();
+  return fetch(S.url+"?"+q,{method:"GET"})
+    .then(function(r){
+      if(!r.ok)throw new Error("http "+r.status);
+      return r.json();
+    })
+    .then(function(j){
+      if(j&&j.ok===false&&j.error==="unauthorized"){
+        throw new Error("unauthorized");
+      }
+      return j;
+    });
+}
+
+// queued api — guarantees eventual delivery
+// 'get' requests are NOT queued (they're read-only and need fresh data)
+function api(p){
+  if(p.action==="get"){return rawApi(p);}
+  // enqueue the write first
+  var item={id:uid(),params:p,ts:Date.now(),attempts:0};
+  S.syncQueue.push(item);
+  saveQueue();
+  // try immediately; if it fails, it stays in queue
+  processQueue();
+  return Promise.resolve({ok:true,queued:true});
+}
+
+function processQueue(){
+  if(S.queueProcessing||!S.syncQueue.length)return;
+  if(!S.online||!S.connected){R();return;}
+  S.queueProcessing=true;R();
+
+  var item=S.syncQueue[0];
+  item.attempts=(item.attempts||0)+1;
+
+  rawApi(item.params).then(function(r){
+    if(r&&r.ok){
+      // success — remove from queue
+      S.syncQueue.shift();
+      saveQueue();
+      S.queueProcessing=false;
+      if(S.syncQueue.length){processQueue();}
+      else{R();}
+    }else{
+      throw new Error(r&&r.error||"unknown");
+    }
+  }).catch(function(err){
+    S.queueProcessing=false;
+    // if unauthorized, stop processing until user fixes it
+    if(String(err.message||err).indexOf("unauthorized")>=0){
+      toast("⚠ Auth failed — check your token");
+      R();return;
+    }
+    // after 10 attempts, give up on this item so queue isn't stuck
+    if(item.attempts>=10){
+      console.warn("Queue item failed 10x, dropping:",item);
+      S.syncQueue.shift();
+      saveQueue();
+      toast("⚠ One change couldn't sync");
+    }
+    R();
+    // retry after backoff
+    setTimeout(processQueue,Math.min(30000,1000*Math.pow(2,item.attempts)));
+  });
+}
+
+// network listeners
+window.addEventListener("online",function(){S.online=true;R();processQueue();});
+window.addEventListener("offline",function(){S.online=false;R();});
+// periodic retry
+setInterval(function(){if(S.online&&S.connected&&S.syncQueue.length)processQueue();},30000);
+
 function syncResponse(r){
   if(r.ok){
     S.data=cleanData(r.data||[]);
@@ -1005,23 +1176,41 @@ function syncResponse(r){
   }
 }
 function load(){
+  if(!S.online){toast("You're offline");return;}
   S.syncing=true;R();
-  api({action:"get"}).then(function(r){
+  rawApi({action:"get"}).then(function(r){
     syncResponse(r);
     S.syncing=false;R();
     toast("✓ Synced");
-  }).catch(function(){S.syncing=false;R();toast("Sync failed ⚠");});
+    processQueue();
+  }).catch(function(err){
+    S.syncing=false;R();
+    if(String(err.message||err).indexOf("unauthorized")>=0){
+      toast("⚠ Auth failed — check token");
+    }else{
+      toast("Sync failed ⚠");
+    }
+  });
 }
 function conn(){
-  if(!S.url.trim())return;
+  if(!S.url.trim()){S.status="fail";R();return;}
   S.status="testing";R();
-  fetch(S.url.trim()+"?action=get").then(function(r){return r.json();}).then(function(d){
-    if(d.ok){
+  var urlClean=S.url.trim();
+  var tokenClean=(S.token||"").trim();
+  var params=new URLSearchParams({action:"get",token:tokenClean}).toString();
+  fetch(urlClean+"?"+params).then(function(r){return r.json();}).then(function(d){
+    if(d&&d.ok){
       S.status="ok";S.connected=true;
       syncResponse(d);
-      localStorage.setItem("ex_url",S.url.trim());
+      localStorage.setItem("ex_url",urlClean);
+      localStorage.setItem("ex_token",tokenClean);
       toast("Connected! 🎉");
-    }else S.status="fail";
+      processQueue();
+    }else if(d&&d.error==="unauthorized"){
+      S.status="auth_fail";
+    }else{
+      S.status="fail";
+    }
     R();
   }).catch(function(){S.status="fail";R();});
 }
@@ -1034,7 +1223,15 @@ function addExp(){
   var descEl=document.getElementById('modal-desc');
   if(amtEl&&amtEl.value)S.form.amount=amtEl.value;
   if(descEl)S.form.desc=descEl.value;
-  if(!S.form.amount)return;
+  // VALIDATION
+  var errA=validAmount(S.form.amount);
+  if(errA){S.formError=errA;R();return;}
+  var errD=validDate(S.form.date);
+  if(errD){S.formError=errD;R();return;}
+  var errT=validText(S.form.desc,200);
+  if(errT){S.formError=errT;R();return;}
+  S.formError="";
+
   var pm=S.form.pm||"cash";
   var isCC=(pm==="credit"&&S.ccEnabled);
   var typ=isCC?"cc_charge":"expense";
@@ -1045,28 +1242,39 @@ function addExp(){
   S.form={amount:"",cat:"grocery",desc:"",date:td(),pm:"cash"};
   S.modal=null;
   R();toast(isCC?"CC charge added ✓":"Expense added ✓");
-  api({action:"add",id:e.id,amount:e.amount,category:e.category,desc:e.desc,date:e.date,type:typ,pm:pm,gl_debit:glDebit,gl_credit:glCredit}).catch(function(){});
+  api({action:"add",id:e.id,amount:e.amount,category:e.category,desc:e.desc,date:e.date,type:typ,pm:pm,gl_debit:glDebit,gl_credit:glCredit});
 }
 function addInc(){
   var amtEl=document.getElementById('modal-amount');
   var descEl=document.getElementById('modal-desc');
   if(amtEl&&amtEl.value)S.incForm.amount=amtEl.value;
   if(descEl)S.incForm.desc=descEl.value;
-  if(!S.incForm.amount)return;
+  // VALIDATION
+  var errA=validAmount(S.incForm.amount);
+  if(errA){S.formError=errA;R();return;}
+  var errD=validDate(S.incForm.date);
+  if(errD){S.formError=errD;R();return;}
+  var errT=validText(S.incForm.desc,200);
+  if(errT){S.formError=errT;R();return;}
+  S.formError="";
+
   var e={id:uid(),amount:num(S.incForm.amount),category:S.incForm.cat,desc:S.incForm.desc,date:S.incForm.date,ts:Date.now(),type:"income"};
   S.data.push(e);
   S.incForm={amount:"",cat:"salary",desc:"",date:td()};
   S.modal=null;
   R();toast("Income added ✓");
-  api({action:"add",id:e.id,amount:e.amount,category:e.category,desc:e.desc,date:e.date,type:"income"}).catch(function(){});
+  api({action:"add",id:e.id,amount:e.amount,category:e.category,desc:e.desc,date:e.date,type:"income"});
 }
 function payCCBill(){
   var amtEl=document.getElementById('modal-amount');
   if(amtEl&&amtEl.value)S.ccPayForm.amount=amtEl.value;
   var f=S.ccPayForm;
-  if(!f.amount)return;
+  var errA=validAmount(f.amount);
+  if(errA){S.formError=errA;R();return;}
+  var errD=validDate(f.date);
+  if(errD){S.formError=errD;R();return;}
+  S.formError="";
   var amt=num(f.amount);
-  if(amt<=0)return;
   var liability=ccLiability();
   if(liability<=0){toast("No CC liability to pay");return;}
   if(amt>liability){amt=liability;toast("Capped to liability "+fmt(liability));}
@@ -1076,14 +1284,21 @@ function payCCBill(){
   S.ccPayForm={amount:"",date:td()};
   S.modal=null;R();
   toast("CC bill paid "+fmt(amt)+" ✓");
-  api({action:"add",id:e.id,amount:e.amount,category:e.category,desc:e.desc,date:e.date,type:"cc_payment",pm:"cash",gl_debit:"2000",gl_credit:"1000"}).catch(function(){});
+  api({action:"add",id:e.id,amount:e.amount,category:e.category,desc:e.desc,date:e.date,type:"cc_payment",pm:"cash",gl_debit:"2000",gl_credit:"1000"});
 }
 function updEnt(){
   var amtEl=document.getElementById('modal-amount');
   var descEl=document.getElementById('modal-desc');
   if(amtEl&&amtEl.value)S.editForm.amount=amtEl.value;
   if(descEl)S.editForm.desc=descEl.value;
-  var f=S.editForm;if(!f.amount)return;
+  var f=S.editForm;
+  var errA=validAmount(f.amount);
+  if(errA){S.formError=errA;R();return;}
+  var errD=validDate(f.date);
+  if(errD){S.formError=errD;R();return;}
+  var errT=validText(f.desc,200);
+  if(errT){S.formError=errT;R();return;}
+  S.formError="";
   // determine correct type based on pm
   var pm=f.pm||"cash";
   var isIncome=f.type==="income";
@@ -1102,15 +1317,14 @@ function updEnt(){
     }
   }
   S.modal=null;R();toast("Updated ✓");
-  api({action:"delete",id:f.id}).then(function(){
-    return api({action:"add",id:f.id,amount:f.amount,category:f.cat,desc:f.desc||"",date:f.date,type:actualType,pm:pm,gl_debit:glDebit,gl_credit:glCredit});
-  }).catch(function(){});
+  api({action:"delete",id:f.id});
+  api({action:"add",id:f.id,amount:f.amount,category:f.cat,desc:f.desc||"",date:f.date,type:actualType,pm:pm,gl_debit:glDebit,gl_credit:glCredit});
 }
 function delEnt(id){
   if(!confirm("Delete this entry?"))return;
   S.data=S.data.filter(function(e){return e.id!==id;});
   S.modal=null;R();toast("Deleted");
-  api({action:"delete",id:id}).catch(function(){});
+  api({action:"delete",id:id});
 }
 function openEd(id){
   for(var i=0;i<S.data.length;i++){
@@ -1144,14 +1358,13 @@ function resetAllData(){
     return;
   }
 
-  // snapshot ids to delete on server before wiping local
-  var txIds=S.data.map(function(d){return d.id;});
-  var debtIds=S.pending.map(function(d){return d.id;});
-
   // wipe local state
   S.data=[];
   S.pending=[];
   S.openBal=0;
+  // also clear any pending sync items — they're obsolete
+  S.syncQueue=[];
+  saveQueue();
   localStorage.removeItem("ex_pending");
   localStorage.removeItem("ex_openbal");
 
@@ -1161,13 +1374,8 @@ function resetAllData(){
   R();
   toast("✓ App reset to blank state");
 
-  // wipe server (best-effort, fire and forget)
-  txIds.forEach(function(id){
-    api({action:"delete",id:id}).catch(function(){});
-  });
-  debtIds.forEach(function(id){
-    api({action:"delete_debt",id:id}).catch(function(){});
-  });
+  // wipe server in one call (queued; will retry if offline)
+  api({action:"reset_all"});
 }
 
 // ─────────────────────────────────────────
@@ -1180,14 +1388,21 @@ function addDebt(){
   if(amtEl&&amtEl.value)S.debtForm.amount=amtEl.value;
   if(personEl)S.debtForm.person=personEl.value;
   if(noteEl)S.debtForm.desc=noteEl.value;
-  if(!S.debtForm.amount||!S.debtForm.person)return;
+  var errA=validAmount(S.debtForm.amount);
+  if(errA){S.formError=errA;R();return;}
+  if(!S.debtForm.person||!S.debtForm.person.trim()){S.formError="Person name is required";R();return;}
+  var errP=validText(S.debtForm.person,100);
+  if(errP){S.formError=errP;R();return;}
+  var errT=validText(S.debtForm.desc,200);
+  if(errT){S.formError=errT;R();return;}
+  S.formError="";
   var orig=num(S.debtForm.amount);
-  var d={id:uid(),person:S.debtForm.person,amount:orig,remaining:orig,type:S.debtForm.type,desc:S.debtForm.desc,date:td(),payments:[]};
+  var d={id:uid(),person:S.debtForm.person.trim(),amount:orig,remaining:orig,type:S.debtForm.type,desc:S.debtForm.desc,date:td(),payments:[]};
   S.pending.push(d);
   savePending();
   S.debtForm={person:"",amount:"",type:"owe_me",desc:""};
   S.modal=null;R();toast("Debt logged ✓");
-  api({action:"add_debt",id:d.id,person:d.person,amount:d.amount,type:d.type,desc:d.desc,date:d.date,remaining:d.remaining,payments:"[]"}).catch(function(){});
+  api({action:"add_debt",id:d.id,person:d.person,amount:d.amount,type:d.type,desc:d.desc,date:d.date,remaining:d.remaining,payments:"[]"});
 }
 
 function openPartialPay(id){
@@ -1206,12 +1421,17 @@ function addPartialPay(){
   if(applyEl)S.partialForm.applyNow=applyEl.checked;
 
   var f=S.partialForm;
-  if(!f.amount)return;
+  var errA=validAmount(f.amount);
+  if(errA){S.formError=errA;R();return;}
+  var errD=validDate(f.date);
+  if(errD){S.formError=errD;R();return;}
+  var errT=validText(f.note,200);
+  if(errT){S.formError=errT;R();return;}
+  S.formError="";
   var idx=findDebt(f.id);
-  if(idx===-1)return;
+  if(idx===-1){toast("Debt not found");return;}
   var d=S.pending[idx];
   var paid=num(f.amount);
-  if(paid<=0)return;
   if(paid>d.remaining)paid=d.remaining;
 
   var payEntry={amount:paid,date:f.date||td(),note:f.note||"",applied:false};
@@ -1221,11 +1441,11 @@ function addPartialPay(){
     if(d.type==="owe_me"){
       var e1={id:uid(),amount:paid,category:"other_inc",desc:"Payment from "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"income"};
       S.data.push(e1);
-      api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"income"}).catch(function(){});
+      api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"income"});
     }else{
       var e2={id:uid(),amount:paid,category:"other",desc:"Payment to "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"expense"};
       S.data.push(e2);
-      api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"expense"}).catch(function(){});
+      api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"expense"});
     }
   }
 
@@ -1252,12 +1472,12 @@ function applyPayment(debtId,pIdx){
     // they owe me → they paid me back → INCOME for me
     var e1={id:uid(),amount:p.amount,category:"other_inc",desc:"Payment from "+d.person+(p.note?" · "+p.note:""),date:p.date,ts:Date.now(),type:"income"};
     S.data.push(e1);
-    api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"income"}).catch(function(){});
+    api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"income"});
   }else{
     // I owe them → I paid them → EXPENSE for me
     var e2={id:uid(),amount:p.amount,category:"other",desc:"Payment to "+d.person+(p.note?" · "+p.note:""),date:p.date,ts:Date.now(),type:"expense"};
     S.data.push(e2);
-    api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"expense"}).catch(function(){});
+    api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"expense"});
   }
   savePending();
   syncDebtToServer(d);
@@ -1282,16 +1502,16 @@ function settleDebt(id){
     if(d.type==="owe_me"){
       var e1={id:uid(),amount:toApply,category:"other_inc",desc:"Settled: "+d.person,date:td(),ts:Date.now(),type:"income"};
       S.data.push(e1);
-      api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"income"}).catch(function(){});
+      api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"income"});
     }else{
       var e2={id:uid(),amount:toApply,category:"other",desc:"Settled: "+d.person,date:td(),ts:Date.now(),type:"expense"};
       S.data.push(e2);
-      api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"expense"}).catch(function(){});
+      api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"expense"});
     }
   }
   S.pending.splice(idx,1);
   savePending();
-  api({action:"delete_debt",id:id}).catch(function(){});
+  api({action:"delete_debt",id:id});
   S.modal=null;R();toast("Debt settled ✓");
 }
 
@@ -1313,13 +1533,17 @@ function addToDebt(){
   if(applyEl)S.addToDebtForm.applyNow=applyEl.checked;
 
   var f=S.addToDebtForm;
-  if(!f.amount)return;
-  // FIX: use findDebt with the specific ID from the form
+  var errA=validAmount(f.amount);
+  if(errA){S.formError=errA;R();return;}
+  var errD=validDate(f.date);
+  if(errD){S.formError=errD;R();return;}
+  var errT=validText(f.note,200);
+  if(errT){S.formError=errT;R();return;}
+  S.formError="";
   var idx=findDebt(f.id);
   if(idx===-1){toast("Debt not found ⚠");return;}
   var d=S.pending[idx];
   var added=num(f.amount);
-  if(added<=0)return;
 
   // add to ONLY this debt's total and remaining
   d.amount=d.amount+added;
@@ -1338,11 +1562,11 @@ function addToDebt(){
     if(d.type==="owe_me"){
       var e1={id:uid(),amount:added,category:"other",desc:"Added to debt: "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"expense"};
       S.data.push(e1);
-      api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"expense"}).catch(function(){});
+      api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"expense"});
     }else{
       var e2={id:uid(),amount:added,category:"other_inc",desc:"Added to debt: "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"income"};
       S.data.push(e2);
-      api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"income"}).catch(function(){});
+      api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"income"});
     }
     d.payments[d.payments.length-1].applied=true;
   }
@@ -1359,7 +1583,7 @@ function delDebt(id){
   if(!confirm("Delete this debt?"))return;
   S.pending=S.pending.filter(function(x){return x.id!==id;});
   savePending();
-  api({action:"delete_debt",id:id}).catch(function(){});
+  api({action:"delete_debt",id:id});
   S.modal=null;R();toast("Deleted");
 }
 
@@ -1379,14 +1603,21 @@ function saveEditDebt(){
   if(personEl)S.editDebtForm.person=personEl.value;
   if(noteEl)S.editDebtForm.desc=noteEl.value;
   var f=S.editDebtForm;
-  if(!f.amount||!f.person)return;
+  var errA=validAmount(f.amount);
+  if(errA){S.formError=errA;R();return;}
+  if(!f.person||!f.person.trim()){S.formError="Person name is required";R();return;}
+  var errP=validText(f.person,100);
+  if(errP){S.formError=errP;R();return;}
+  var errT=validText(f.desc,200);
+  if(errT){S.formError=errT;R();return;}
+  S.formError="";
   var idx=findDebt(f.id);
   if(idx===-1)return;
   var d=S.pending[idx];
   var oldAmount=d.amount;
   var newAmount=num(f.amount);
   var diff=newAmount-oldAmount;
-  d.person=f.person;
+  d.person=f.person.trim();
   d.amount=newAmount;
   d.remaining=Math.max(0,d.remaining+diff);
   d.type=f.type;
@@ -1417,6 +1648,13 @@ function saveEditPay(){
   if(dateEl)S.editPayForm.date=dateEl.value;
 
   var f=S.editPayForm;
+  var errA=validAmount(f.amount);
+  if(errA){S.formError=errA;R();return;}
+  var errD=validDate(f.date);
+  if(errD){S.formError=errD;R();return;}
+  var errT=validText(f.note,200);
+  if(errT){S.formError=errT;R();return;}
+  S.formError="";
   var idx=findDebt(f.debtId);
   if(idx===-1)return;
   var d=S.pending[idx];
@@ -1424,7 +1662,6 @@ function saveEditPay(){
   if(!p)return;
 
   var newAmt=num(f.amount);
-  if(newAmt<=0)return;
   var oldAmt=num(p.amount);
 
   p.amount=newAmt;
@@ -1567,20 +1804,26 @@ function doRender(){
 
   // ── CONNECT SCREEN ──
   if(!S.connected){
-    if(S.url&&S.status===""&&localStorage.getItem("ex_url")){conn();return;}
+    if(S.url&&S.token&&S.status===""&&localStorage.getItem("ex_url")){conn();return;}
     var h='<div class="sw"><div class="scard">'+
       '<div class="logo-icon">💰</div>'+
       '<h1>Fulo</h1>'+
       '<p class="sub">Your personal money tracker.<br>Syncs to Google Sheets in real time.</p>'+
       '<input class="inp-url" id="ui" placeholder="Paste Apps Script URL here" value="'+S.url+'">'+
-      '<button class="btn-connect" onclick="S.url=document.getElementById(\'ui\').value;conn()">'+(S.status==="testing"?"Connecting…":"Connect to Google Sheets")+'</button>';
+      '<input class="inp-url" id="ut" placeholder="Paste your secret token" value="'+S.token+'" style="margin-top:4px">'+
+      '<button class="btn-connect" onclick="S.url=document.getElementById(\'ui\').value;S.token=document.getElementById(\'ut\').value;conn()">'+(S.status==="testing"?"Connecting…":"Connect to Google Sheets")+'</button>';
     if(S.status==="fail")h+='<p class="err-msg">⚠ Connection failed. Check URL and try again.</p>';
+    if(S.status==="auth_fail")h+='<p class="err-msg">🔒 Invalid token. Make sure it matches the one in your Apps Script.</p>';
     h+='<div style="margin-top:20px">'+
        '<button class="code-toggle" onclick="S.showScript=!S.showScript;R()">'+(S.showScript?"▲ Hide":"▼ Show")+" Apps Script code</button>";
     if(S.showScript){
       h+='<div class="code-box"><pre>'+SCRIPT.replace(/</g,"&lt;")+'</pre>'+
-         '<button onclick="navigator.clipboard.writeText(SCRIPT).then(function(){this.textContent=\'Copied!\';}.bind(this))">Copy</button></div>'+
-         '<p class="code-note">1. Open Google Sheets → Extensions → Apps Script<br>2. Paste code → Save → Deploy → Web app<br>3. Set access: Anyone. Copy the URL and paste above.</p>';
+         '<button onclick="copyScript(this)">Copy</button></div>'+
+         '<p class="code-note"><b>Setup:</b><br>'+
+         '1. Open Google Sheets → Extensions → Apps Script<br>'+
+         '2. Paste code above → Replace <code>CHANGE_ME_TO_A_LONG_RANDOM_STRING</code> with your own secret (any long random string — this is your password)<br>'+
+         '3. Save → Deploy → New deployment → Web app → "Anyone" access<br>'+
+         '4. Copy the URL + paste above, and paste the same secret as your token</p>';
     }
     h+='</div></div></div>';
     app.innerHTML=h;return;
@@ -1604,9 +1847,16 @@ function doRender(){
 
   // ── HEADER ──
   var h=S.syncing?'<div class="sync-bar"></div>':'';
+  var qCount=queueCount();
+  var statusBadge='';
+  if(!S.online){
+    statusBadge='<span class="status-badge offline-badge" title="You are offline">📡 Offline</span>';
+  }else if(qCount>0){
+    statusBadge='<span class="status-badge queue-badge" onclick="processQueue()" title="Tap to retry" style="cursor:pointer">⏳ '+qCount+' syncing</span>';
+  }
   h+='<div class="hd">'+
     '<div class="hd-top">'+
-    '<span class="hd-brand">Fulo</span>'+
+    '<span class="hd-brand">Fulo</span>'+statusBadge+
     '<div class="hd-acts">'+
     '<button class="hd-btn" onclick="toggleTheme()" title="Toggle theme">'+(S.darkMode?'☀️':'🌙')+'</button>'+
     '<button class="hd-btn" onclick="load()" title="Refresh">🔄</button>'+
@@ -1950,7 +2200,7 @@ function doRender(){
       '</div>'+
       '<div class="set-card">'+
       '<div class="set-row"><div><div class="set-label">Google Sheets URL</div><div class="set-sub">Your Apps Script deploy URL</div></div>'+
-      '<button class="hd-btn" onclick="S.connected=false;S.url=\'\';localStorage.removeItem(\'ex_url\');R()">🔌 Disconnect</button></div>'+
+      '<button class="hd-btn" onclick="S.connected=false;S.url=\'\';S.token=\'\';S.status=\'\';localStorage.removeItem(\'ex_url\');localStorage.removeItem(\'ex_token\');R()">🔌 Disconnect</button></div>'+
       '</div>'+
       '<div class="set-card">'+
       '<div class="set-row"><div><div class="set-label">Sync Data</div><div class="set-sub">Pull latest from Google Sheets</div></div>'+
@@ -2002,7 +2252,7 @@ function doRender(){
         (S.form.pm==="credit"?'<div style="font-size:10px;color:var(--purple);padding:4px 6px;background:var(--purple-dim);border-radius:8px;margin-bottom:4px">💡 This will add to CC liability, not deduct from cash.</div>':'')
         :'';
       var btnClass=S.form.pm==="credit"?"btn-e\" style=\"background:linear-gradient(135deg,var(--purple),var(--blue));color:#fff":"btn-e";
-      md='<div class="md-h"><h3>Add Expense</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>'+
+      md='<div class="md-h"><h3>Add Expense</h3><button class="md-close" onclick="S.modal=null;S.formError=\'\';R()">✕</button></div>'+
         '<input class="inp-big exp-b" id="modal-amount" type="number" inputmode="decimal" placeholder="0.00" value="'+S.form.amount+'">'+
         pmSel+
         '<label class="lb">Category</label>'+mkCats(EC,S.form.cat,"S.form.cat")+
@@ -2010,22 +2260,23 @@ function doRender(){
         '<input class="inp-sm" id="modal-desc" type="text" placeholder="What was this for?" value="'+S.form.desc+'">'+
         '<label class="lb">Date</label>'+
         '<input class="inp-sm" type="date" value="'+S.form.date+'" onchange="S.form.date=this.value">'+
+        (S.formError?'<div class="form-err">'+S.formError+'</div>':'')+
         '<button class="btn '+btnClass+'" onclick="addExp()">'+(S.form.pm==="credit"?"Save CC Charge":"Save Expense")+'</button>';
     }
     else if(S.modal==="income"){
-      md='<div class="md-h"><h3>Add Income</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>'+
+      md='<div class="md-h"><h3>Add Income</h3><button class="md-close" onclick="S.modal=null;S.formError=\'\';R()">✕</button></div>'+
         '<input class="inp-big inc-b" id="modal-amount" type="number" inputmode="decimal" placeholder="0.00" value="'+S.incForm.amount+'">'+
         '<label class="lb">Category</label>'+mkCats(IC,S.incForm.cat,"S.incForm.cat")+
         '<label class="lb">Description</label>'+
         '<input class="inp-sm" id="modal-desc" type="text" placeholder="Source details…" value="'+S.incForm.desc+'">'+
         '<label class="lb">Date</label>'+
         '<input class="inp-sm" type="date" value="'+S.incForm.date+'" onchange="S.incForm.date=this.value">'+
-        '<button class="btn btn-i" onclick="addInc()">Save Income</button>';
+        (S.formError?'<div class="form-err">'+S.formError+'</div>':'')+'<button class="btn btn-i" onclick="addInc()">Save Income</button>';
     }
     // ── Pay CC Bill Modal ──
     else if(S.modal==="ccpay"){
       var curLiab=ccLiability();
-      md='<div class="md-h"><h3>💳 Pay CC Bill</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>'+
+      md='<div class="md-h"><h3>💳 Pay CC Bill</h3><button class="md-close" onclick="S.modal=null;S.formError=\'\';R()">✕</button></div>'+
         '<div style="background:var(--bg3);border-radius:12px;padding:14px;margin-bottom:8px;text-align:center;border-left:3px solid var(--purple)">'+
         '<div style="font-size:10px;color:var(--txt3);text-transform:uppercase;letter-spacing:1px">Outstanding CC Liability</div>'+
         '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:28px;font-weight:900;color:var(--purple);margin-top:4px">'+fmt(curLiab)+'</div>'+
@@ -2040,7 +2291,7 @@ function doRender(){
         '<div style="font-size:10px;color:var(--txt3);margin-top:8px;padding:6px;background:var(--bg3);border-radius:8px;line-height:1.5">'+
         '✓ This will decrease your <b>cash</b> and clear your <b>CC liability</b>.<br>'+
         '✓ No new expense will be created (already recorded at purchase time).</div>'+
-        '<button class="btn" style="background:linear-gradient(135deg,var(--purple),var(--blue));color:#fff" onclick="payCCBill()">Pay CC Bill</button>';
+        (S.formError?'<div class="form-err">'+S.formError+'</div>':'')+'<button class="btn" style="background:linear-gradient(135deg,var(--purple),var(--blue));color:#fff" onclick="payCCBill()">Pay CC Bill</button>';
     }
     // ── Balance History Modal ──
     else if(S.modal==="balance_history"){
@@ -2054,7 +2305,7 @@ function doRender(){
         if(e.type==="income")netDelta+=num(e.amount);
         else if(e.type==="expense"||e.type==="cc_charge"||e.type==="cc_payment")netDelta-=num(e.amount);
       });
-      md='<div class="md-h"><h3>Balance History</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>';
+      md='<div class="md-h"><h3>Balance History</h3><button class="md-close" onclick="S.modal=null;S.formError=\'\';R()">✕</button></div>';
       md+='<div class="bh-delta">'+
         '<div class="bh-delta-label">Net change — last '+recent.length+' entries</div>'+
         '<div class="bh-delta-val" style="color:'+(netDelta>=0?"var(--green)":"var(--red)")+'">'+
@@ -2079,10 +2330,10 @@ function doRender(){
             '<div class="bh-amt '+amClass+'" style="'+amStyle+'">'+(isI?"+":"−")+fmt(e.amount)+'</div></div>';
         });
       }
-      md+='<button class="btn btn-neutral" onclick="S.modal=null;R()">Close</button>';
+      md+='<button class="btn btn-neutral" onclick="S.modal=null;S.formError=\'\';R()">Close</button>';
     }
     else if(S.modal==="debt"){
-      md='<div class="md-h"><h3>Log Debt</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>'+
+      md='<div class="md-h"><h3>Log Debt</h3><button class="md-close" onclick="S.modal=null;S.formError=\'\';R()">✕</button></div>'+
         '<label class="lb">Type</label>'+
         '<div class="stats" style="margin-bottom:0">'+
         '<button class="st" style="cursor:pointer;border:2px solid '+(S.debtForm.type==="owe_me"?"var(--green)":"var(--border)")+';background:'+(S.debtForm.type==="owe_me"?"var(--green-dim)":"var(--card)")+'" onclick="S.debtForm.type=\'owe_me\';R()"><div class="sl">🤝</div><div class="sv" style="font-size:12px">They owe me</div></button>'+
@@ -2094,13 +2345,13 @@ function doRender(){
         '<input class="inp-big" id="modal-amount" type="number" inputmode="decimal" placeholder="0.00" value="'+S.debtForm.amount+'">'+
         '<label class="lb">Note</label>'+
         '<input class="inp-sm" id="debt-note" type="text" placeholder="What for?" value="'+S.debtForm.desc+'">'+
-        '<button class="btn btn-i" onclick="addDebt()">Save Debt</button>';
+        (S.formError?'<div class="form-err">'+S.formError+'</div>':'')+'<button class="btn btn-i" onclick="addDebt()">Save Debt</button>';
     }
     else if(S.modal==="partial"){
       var pd=S.pending.find(function(x){return x.id===S.partialForm.id;});
       var pdRemaining=pd?num(pd.remaining!==undefined?pd.remaining:pd.amount):0;
       var isCredit=pd&&pd.type==="owe_me";
-      md='<div class="md-h"><h3>Record Payment</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>';
+      md='<div class="md-h"><h3>Record Payment</h3><button class="md-close" onclick="S.modal=null;S.formError=\'\';R()">✕</button></div>';
       if(pd){
         md+='<div style="background:var(--bg3);border-radius:12px;padding:12px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">'+
           '<div><div style="font-size:11px;color:var(--txt3)">Remaining balance</div>'+
@@ -2121,12 +2372,13 @@ function doRender(){
         '<div><div style="font-size:13px;font-weight:600;color:'+toggleColor+'">'+toggleLabel+'</div>'+
         '<div style="font-size:10px;color:var(--txt3);margin-top:2px">Check to apply this amount to your main balance now</div></div>'+
         '</label>'+
+        (S.formError?'<div class="form-err">'+S.formError+'</div>':'')+
         '<button class="btn '+(isCredit?"btn-i":"btn-e")+'" onclick="addPartialPay()">Save Payment</button>';
     }
     else if(S.modal==="addtodebt"){
       var atd=S.pending.find(function(x){return x.id===S.addToDebtForm.id;});
       var atdIsCredit=atd&&atd.type==="owe_me";
-      md='<div class="md-h"><h3>Add to Debt</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>';
+      md='<div class="md-h"><h3>Add to Debt</h3><button class="md-close" onclick="S.modal=null;S.formError=\'\';R()">✕</button></div>';
       if(atd){
         md+='<div style="background:var(--bg3);border-radius:12px;padding:12px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">'+
           '<div>'+
@@ -2152,12 +2404,12 @@ function doRender(){
         '<div><div style="font-size:13px;font-weight:600;color:var(--blue)">'+atdLabel+'</div>'+
         '<div style="font-size:10px;color:var(--txt3);margin-top:2px">Check to apply to your main balance now</div></div>'+
         '</label>'+
-        '<button class="btn" style="background:var(--blue);color:#fff;margin-top:12px" onclick="addToDebt()">Add to Debt</button>';
+        (S.formError?'<div class="form-err">'+S.formError+'</div>':'')+'<button class="btn" style="background:var(--blue);color:#fff;margin-top:12px" onclick="addToDebt()">Add to Debt</button>';
     }
     // ── Edit Debt Modal ──
     else if(S.modal==="editdebt"){
       var edf=S.editDebtForm;
-      md='<div class="md-h"><h3>Edit Debt</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>'+
+      md='<div class="md-h"><h3>Edit Debt</h3><button class="md-close" onclick="S.modal=null;S.formError=\'\';R()">✕</button></div>'+
         '<label class="lb">Type</label>'+
         '<div class="stats" style="margin-bottom:0">'+
         '<button class="st" style="cursor:pointer;border:2px solid '+(edf.type==="owe_me"?"var(--green)":"var(--border)")+';background:'+(edf.type==="owe_me"?"var(--green-dim)":"var(--card)")+'" onclick="S.editDebtForm.type=\'owe_me\';R()"><div class="sl">🤝</div><div class="sv" style="font-size:12px">They owe me</div></button>'+
@@ -2169,14 +2421,14 @@ function doRender(){
         '<input class="inp-big" id="modal-amount" type="number" inputmode="decimal" placeholder="0.00" value="'+edf.amount+'">'+
         '<label class="lb">Note</label>'+
         '<input class="inp-sm" id="edit-debt-note" type="text" placeholder="What for?" value="'+edf.desc+'">'+
-        '<button class="btn btn-i" onclick="saveEditDebt()">Save Changes</button>'+
+        (S.formError?'<div class="form-err">'+S.formError+'</div>':'')+'<button class="btn btn-i" onclick="saveEditDebt()">Save Changes</button>'+
         '<button class="btn btn-del" onclick="delDebt(\''+edf.id+'\')">🗑 Delete Debt</button>';
     }
     // ── Edit Payment Entry Modal ──
     else if(S.modal==="editpay"){
       var epf=S.editPayForm;
       var epDebt=S.pending.find(function(x){return x.id===epf.debtId;});
-      md='<div class="md-h"><h3>Edit '+(epf.isAddition?"Addition":"Payment")+'</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>';
+      md='<div class="md-h"><h3>Edit '+(epf.isAddition?"Addition":"Payment")+'</h3><button class="md-close" onclick="S.modal=null;S.formError=\'\';R()">✕</button></div>';
       if(epDebt){
         md+='<div style="background:var(--bg3);border-radius:12px;padding:12px;margin-bottom:4px;text-align:center">'+
           '<div style="font-size:11px;color:var(--txt3)">'+epDebt.person+'</div></div>';
@@ -2187,7 +2439,7 @@ function doRender(){
         '<input class="inp-sm" id="editpay-date" type="date" value="'+epf.date+'">'+
         '<label class="lb">Note</label>'+
         '<input class="inp-sm" id="editpay-note" type="text" placeholder="Note (optional)" value="'+epf.note+'">'+
-        '<button class="btn btn-i" onclick="saveEditPay()">Save Changes</button>'+
+        (S.formError?'<div class="form-err">'+S.formError+'</div>':'')+'<button class="btn btn-i" onclick="saveEditPay()">Save Changes</button>'+
         '<button class="btn btn-del" onclick="delPayEntry(\''+epf.debtId+'\','+epf.payIdx+');S.modal=null;R()">🗑 Delete Entry</button>';
     }
     else if(S.modal==="edit"){
@@ -2198,7 +2450,7 @@ function doRender(){
       var editPm=f.pm||"cash";
       var editTitle=isCCpay?"CC Payment":isI?"Income":"Expense";
 
-      md='<div class="md-h"><h3>Edit '+editTitle+'</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>'+
+      md='<div class="md-h"><h3>Edit '+editTitle+'</h3><button class="md-close" onclick="S.modal=null;S.formError=\'\';R()">✕</button></div>'+
         '<input class="inp-big '+(isI?"inc-b":isCCpay?"":"exp-b")+'" id="modal-amount" type="number" inputmode="decimal" value="'+f.amount+'"'+(isCCpay?' style="border-color:var(--purple)"':'')+'>'; 
 
       // payment method selector for expense types (not income, not cc_payment)
@@ -2225,18 +2477,19 @@ function doRender(){
       }
       md+='<label class="lb">Date</label>'+
         '<input class="inp-sm" type="date" value="'+f.date+'" onchange="S.editForm.date=this.value">'+
+        (S.formError?'<div class="form-err">'+S.formError+'</div>':'')+
         '<button class="btn '+(isI?"btn-i":isCCpay?"\" style=\"background:var(--purple);color:#fff":"btn-e")+'" onclick="updEnt()">Update</button>'+
         '<button class="btn btn-del" onclick="delEnt(\''+f.id+'\')">🗑 Delete Entry</button>';
     }
 
-    h+='<div class="ov" onclick="if(event.target===this){S.modal=null;R()}"><div class="md">'+md+'</div></div>';
+    h+='<div class="ov" onclick="if(event.target===this){S.modal=null;S.formError="";R()}"><div class="md">'+md+'</div></div>';
   }
 
   app.innerHTML=h;
 }
 
 // ── INIT ──
-if(S.url&&localStorage.getItem("ex_url")){conn();}else{R();}
+if(S.url&&S.token&&localStorage.getItem("ex_url")&&localStorage.getItem("ex_token")){conn();}else{R();}
 </script>
 </body>
 </html>
