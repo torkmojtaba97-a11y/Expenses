@@ -1116,15 +1116,25 @@ function updEnt(){
   if(amtEl&&amtEl.value)S.editForm.amount=amtEl.value;
   if(descEl)S.editForm.desc=descEl.value;
   var f=S.editForm;if(!f.amount)return;
+  // determine correct type based on pm
+  var pm=f.pm||"cash";
+  var isIncome=f.type==="income";
+  var actualType=isIncome?"income":(pm==="credit"&&S.ccEnabled?"cc_charge":"expense");
+  var glDebit=isIncome?"1000":(f.cat==="grocery"?"5000":f.cat==="food"?"5010":f.cat==="transport"?"5020":f.cat==="bills"?"5030":f.cat==="health"?"5040":f.cat==="clothes"?"5050":f.cat==="fun"?"5060":f.cat==="home"?"5070":"5090");
+  var glCredit=isIncome?(f.cat==="salary"?"4000":f.cat==="commission"?"4010":f.cat==="freelance"?"4010":"4020"):(pm==="credit"&&S.ccEnabled?"2000":"1000");
+  if(isIncome){glDebit="1000";}
   for(var i=0;i<S.data.length;i++){
     if(S.data[i].id===f.id){
       S.data[i].amount=num(f.amount);S.data[i].category=f.cat;
-      S.data[i].desc=f.desc;S.data[i].date=f.date;break;
+      S.data[i].desc=f.desc;S.data[i].date=f.date;
+      S.data[i].type=actualType;S.data[i].pm=pm;
+      S.data[i].gl_debit=glDebit;S.data[i].gl_credit=glCredit;
+      break;
     }
   }
   S.modal=null;R();toast("Updated ✓");
   api({action:"delete",id:f.id}).then(function(){
-    return api({action:"add",id:f.id,amount:f.amount,category:f.cat,desc:f.desc||"",date:f.date,type:f.type||"expense"});
+    return api({action:"add",id:f.id,amount:f.amount,category:f.cat,desc:f.desc||"",date:f.date,type:actualType,pm:pm,gl_debit:glDebit,gl_credit:glCredit});
   }).catch(function(){});
 }
 function delEnt(id){
@@ -1137,7 +1147,7 @@ function openEd(id){
   for(var i=0;i<S.data.length;i++){
     if(S.data[i].id===id){
       var d=S.data[i];
-      S.editForm={id:id,amount:String(d.amount),cat:d.category,desc:d.desc||"",date:d.date,type:d.type||"expense"};
+      S.editForm={id:id,amount:String(d.amount),cat:d.category,desc:d.desc||"",date:d.date,type:d.type||"expense",pm:d.pm||"cash"};
       S.modal="edit";R();return;
     }
   }
@@ -1526,7 +1536,7 @@ function mkRow(e){
     '<div class="ic" style="background:'+c.c+'18">'+c.i+'</div>'+
     '<div class="nfo"><div class="nm">'+(e.desc||c.l)+ccBadge+'</div><div class="dt">'+e.date+(ts2t(e.ts)?' · '+ts2t(e.ts):'')+'</div>'+glTag+'</div>'+
     '<div class="am '+amClass+'" style="'+amColor+'">'+prefix+fmt(e.amount)+'</div>'+
-    (isCCpay?'':'<button class="ed-btn" onclick="openEd(\''+e.id+'\')">✏️</button>')+'</div>';
+    '<button class="ed-btn" onclick="openEd(\''+e.id+'\')">✏️</button></div>';
 }
 function mkCats(list,sel,path){
   var h='<div class="cg">';
@@ -2223,15 +2233,41 @@ function doRender(){
         '<button class="btn btn-del" onclick="delPayEntry(\''+epf.debtId+'\','+epf.payIdx+');S.modal=null;R()">🗑 Delete Entry</button>';
     }
     else if(S.modal==="edit"){
-      var f=S.editForm;var isI=f.type==="income";
-      md='<div class="md-h"><h3>Edit '+(isI?"Income":"Expense")+'</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>'+
-        '<input class="inp-big '+(isI?"inc-b":"exp-b")+'" id="modal-amount" type="number" inputmode="decimal" value="'+f.amount+'">'+
-        '<label class="lb">Category</label>'+mkCats(isI?IC:EC,f.cat,"S.editForm.cat")+
-        '<label class="lb">Description</label>'+
-        '<input class="inp-sm" id="modal-desc" type="text" value="'+f.desc+'">'+
-        '<label class="lb">Date</label>'+
+      var f=S.editForm;
+      var isI=f.type==="income";
+      var isCCpay=f.type==="cc_payment";
+      var isExpType=!isI&&!isCCpay;
+      var editPm=f.pm||"cash";
+      var editTitle=isCCpay?"CC Payment":isI?"Income":"Expense";
+
+      md='<div class="md-h"><h3>Edit '+editTitle+'</h3><button class="md-close" onclick="S.modal=null;R()">✕</button></div>'+
+        '<input class="inp-big '+(isI?"inc-b":isCCpay?"":"exp-b")+'" id="modal-amount" type="number" inputmode="decimal" value="'+f.amount+'"'+(isCCpay?' style="border-color:var(--purple)"':'')+'>'; 
+
+      // payment method selector for expense types (not income, not cc_payment)
+      if(isExpType&&S.ccEnabled){
+        md+='<label class="lb">Payment Method</label>'+
+          '<div class="pm-sel">'+
+          '<button class="pm-btn pm-cash'+(editPm==="cash"?" pm-on":"")+'" onclick="S.editForm.pm=\'cash\';R()"><span class="pm-ic">💵</span>Cash</button>'+
+          '<button class="pm-btn'+(editPm==="debit"?" pm-on":"")+'" onclick="S.editForm.pm=\'debit\';R()"><span class="pm-ic">🏧</span>Debit</button>'+
+          '<button class="pm-btn'+(editPm==="credit"?" pm-on":"")+'" onclick="S.editForm.pm=\'credit\';R()"><span class="pm-ic">💳</span>Credit</button>'+
+          '<button class="pm-btn'+(editPm==="ewallet"?" pm-on":"")+'" onclick="S.editForm.pm=\'ewallet\';R()"><span class="pm-ic">📱</span>E-Wallet</button>'+
+          '</div>';
+        if(editPm==="credit"){
+          md+='<div style="font-size:10px;color:var(--purple);padding:4px 6px;background:var(--purple-dim);border-radius:8px;margin-bottom:4px">💡 CC charge — adds to liability, not deducted from cash.</div>';
+        }
+      }
+
+      if(!isCCpay){
+        md+='<label class="lb">Category</label>'+mkCats(isI?IC:EC,f.cat,"S.editForm.cat")+
+          '<label class="lb">Description</label>'+
+          '<input class="inp-sm" id="modal-desc" type="text" value="'+f.desc+'">';
+      }else{
+        md+='<div style="background:var(--bg3);border-radius:10px;padding:10px;margin:8px 0;font-size:11px;color:var(--txt3);line-height:1.5">'+
+          '💳 CC bill payment — reduces cash and clears CC liability.<br>Deleting this will restore cash and bring back the liability.</div>';
+      }
+      md+='<label class="lb">Date</label>'+
         '<input class="inp-sm" type="date" value="'+f.date+'" onchange="S.editForm.date=this.value">'+
-        '<button class="btn '+(isI?"btn-i":"btn-e")+'" onclick="updEnt()">Update</button>'+
+        '<button class="btn '+(isI?"btn-i":isCCpay?"\" style=\"background:var(--purple);color:#fff":"btn-e")+'" onclick="updEnt()">Update</button>'+
         '<button class="btn btn-del" onclick="delEnt(\''+f.id+'\')">🗑 Delete Entry</button>';
     }
 
