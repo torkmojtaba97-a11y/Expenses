@@ -1156,6 +1156,53 @@ function openEd(id){
 function setOB(v){S.openBal=num(v);localStorage.setItem("ex_openbal",S.openBal);}
 
 // ─────────────────────────────────────────
+//  FACTORY RESET — wipes everything but keeps connection
+// ─────────────────────────────────────────
+function resetAllData(){
+  // first confirm
+  var msg1="⚠️ FACTORY RESET\n\n"+
+    "This will permanently delete:\n"+
+    "• All transactions ("+S.data.length+" entries)\n"+
+    "• All debts ("+S.pending.length+" entries)\n"+
+    "• Opening balance ("+fmt(S.openBal)+")\n"+
+    "• ALL rows in your Google Sheet\n\n"+
+    "This CANNOT be undone.\n\nContinue?";
+  if(!confirm(msg1))return;
+
+  // second confirm — must type RESET
+  var typed=prompt("To confirm, type RESET (in capitals) below:");
+  if(typed!=="RESET"){
+    toast("Reset cancelled — text did not match");
+    return;
+  }
+
+  // snapshot ids to delete on server before wiping local
+  var txIds=S.data.map(function(d){return d.id;});
+  var debtIds=S.pending.map(function(d){return d.id;});
+
+  // wipe local state
+  S.data=[];
+  S.pending=[];
+  S.openBal=0;
+  localStorage.removeItem("ex_pending");
+  localStorage.removeItem("ex_openbal");
+
+  // close any open modal & re-render immediately
+  S.modal=null;
+  S.page="home";
+  R();
+  toast("✓ App reset to blank state");
+
+  // wipe server (best-effort, fire and forget)
+  txIds.forEach(function(id){
+    api({action:"delete",id:id}).catch(function(){});
+  });
+  debtIds.forEach(function(id){
+    api({action:"delete_debt",id:id}).catch(function(){});
+  });
+}
+
+// ─────────────────────────────────────────
 //  DEBTS — ALL FIXED
 // ─────────────────────────────────────────
 function addDebt(){
@@ -2014,6 +2061,11 @@ function doRender(){
       '<span style="position:absolute;inset:0;background:'+(S.ccEnabled?"var(--purple)":"var(--bg3)")+';border-radius:14px;transition:background .2s;border:1px solid var(--border)"></span>'+
       '<span style="position:absolute;top:3px;left:'+(S.ccEnabled?"24px":"3px")+';width:22px;height:22px;background:var(--card);border-radius:50%;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></span>'+
       '</label></div>'+
+      '</div>'+
+      '<div class="sec" style="color:var(--red)">⚠️ Danger Zone</div>'+
+      '<div class="set-danger" onclick="resetAllData()">'+
+      '<div><div class="lbl">🗑 Factory Reset</div><div class="set-sub" style="color:var(--red);opacity:.75">Wipes all transactions, debts & opening balance — also clears Google Sheet. Connection & theme are kept.</div></div>'+
+      '<span style="font-size:18px;color:var(--red)">›</span>'+
       '</div>'+
       '<div class="version-tag">Fulo v3.1 · Built with ❤️</div>';
   }
