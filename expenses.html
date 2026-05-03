@@ -823,6 +823,23 @@ button,input,select{font-family:'Nunito',sans-serif}
   padding:3px 8px;border-radius:6px;
   pointer-events:none;
 }
+/* Period toggle on balance card */
+.period-tabs{
+  display:flex;gap:3px;
+  background:rgba(255,255,255,.12);
+  border-radius:10px;
+  padding:3px;
+  margin-bottom:12px;
+}
+.period-tab{
+  flex:1;padding:5px 4px;border-radius:7px;
+  border:none;background:transparent;
+  color:rgba(255,255,255,.65);font-size:9px;
+  font-weight:700;cursor:pointer;letter-spacing:.3px;
+  font-family:'Nunito',sans-serif;
+  transition:all .15s;
+}
+.period-tab.on{background:rgba(255,255,255,.22);color:#fff;}
 
 /* Balance history modal */
 .bh-item{
@@ -899,6 +916,7 @@ function ml(k){var p=k.split("-");return MN[parseInt(p[1])-1]+" "+p[0];}
 function gc(id){var a=EC.concat(IC);for(var i=0;i<a.length;i++){if(a[i].id===id)return a[i];}return EC[8];}
 function num(v){var n=parseFloat(v);return isNaN(n)?0:n;}
 function ts2t(ts){if(!ts)return"";var d=new Date(typeof ts==="number"?ts:parseInt(ts));if(isNaN(d.getTime()))return"";return d.getHours().toString().padStart(2,"0")+":"+d.getMinutes().toString().padStart(2,"0");}
+function ts2date(ts){if(!ts)return"";var d=new Date(typeof ts==="number"?ts:parseInt(ts));if(isNaN(d.getTime()))return"";return MN[d.getMonth()].slice(0,3)+" "+d.getDate()+" "+d.getHours().toString().padStart(2,"0")+":"+d.getMinutes().toString().padStart(2,"0");}
 function uid(){
   if(typeof crypto!=="undefined"&&crypto.randomUUID){return crypto.randomUUID();}
   // fallback: high-entropy (ts + 3 random segments)
@@ -1008,6 +1026,7 @@ var S={
   addToDebtForm:{id:"",amount:"",note:"",date:"",applyNow:false},
   editPayForm:{debtId:"",payIdx:-1,amount:"",note:"",date:""},
   ccPayForm:{amount:"",date:td()},
+  balPeriod:localStorage.getItem("ex_balperiod")||"month",
 };
 
 function applyTheme(){
@@ -1078,6 +1097,44 @@ function cashBal(){
   return S.openBal+inflow-outflow;
 }
 function netPos(){return cashBal()-ccLiability();}
+
+// period-filtered data for balance card stats
+function periodRange(){
+  var now=new Date();
+  if(S.balPeriod==="day"){
+    var d=td();return{from:d,to:d};
+  }
+  if(S.balPeriod==="month"){
+    var y=now.getFullYear(),m=String(now.getMonth()+1).padStart(2,"0");
+    return{from:y+"-"+m+"-01",to:y+"-"+m+"-31"};
+  }
+  if(S.balPeriod==="year"){
+    var y2=now.getFullYear();
+    return{from:y2+"-01-01",to:y2+"-12-31"};
+  }
+  return{from:"",to:""}; // all
+}
+function getPeriodI(){
+  var r=periodRange();
+  return getI().filter(function(e){
+    if(!r.from)return true;
+    return e.date>=r.from&&e.date<=r.to;
+  });
+}
+function getPeriodE(){
+  var r=periodRange();
+  return getE().filter(function(e){
+    if(!r.from)return true;
+    return e.date>=r.from&&e.date<=r.to;
+  });
+}
+function periodLabel(){
+  var now=new Date();
+  if(S.balPeriod==="day")return "Today";
+  if(S.balPeriod==="month")return MN[now.getMonth()]+" "+now.getFullYear();
+  if(S.balPeriod==="year")return String(now.getFullYear());
+  return "All time";
+}
 function saveCCCards(){localStorage.setItem("ex_cc",JSON.stringify(S.ccCards));}
 function tot(arr){var s=0;for(var i=0;i<arr.length;i++)s+=num(arr[i].amount);return s;}
 
@@ -1326,6 +1383,7 @@ function updEnt(){
   var errT=validText(f.desc,200);
   if(errT){S.formError=errT;R();return;}
   S.formError="";
+  var editNow=Date.now();
   // determine correct type based on pm
   var pm=f.pm||"cash";
   var isIncome=f.type==="income";
@@ -1343,10 +1401,14 @@ function updEnt(){
   if(isIncome||isDebtIn){glDebit="1000";}
   for(var i=0;i<S.data.length;i++){
     if(S.data[i].id===f.id){
-      S.data[i].amount=num(f.amount);S.data[i].category=f.cat;
-      S.data[i].desc=f.desc;S.data[i].date=f.date;
-      S.data[i].type=actualType;S.data[i].pm=pm;
-      S.data[i].gl_debit=glDebit;S.data[i].gl_credit=glCredit;
+      var old=S.data[i];
+      if(!old.editLog)old.editLog=[];
+      old.editLog.push({ts:editNow,oldAmount:old.amount,oldDesc:old.desc,oldDate:old.date,oldCat:old.category});
+      old.amount=num(f.amount);old.category=f.cat;
+      old.desc=f.desc;old.date=f.date;
+      old.type=actualType;old.pm=pm;
+      old.gl_debit=glDebit;old.gl_credit=glCredit;
+      old.editedAt=editNow;
       break;
     }
   }
@@ -1434,23 +1496,22 @@ function addDebt(){
   S.formError="";
   var orig=num(S.debtForm.amount);
   var person=S.debtForm.person.trim();
-  var d={id:uid(),person:person,amount:orig,remaining:orig,type:S.debtForm.type,desc:S.debtForm.desc,date:td(),payments:[]};
+  var d={id:uid(),person:person,amount:orig,remaining:orig,type:S.debtForm.type,desc:S.debtForm.desc,date:td(),payments:[],origEntryId:null};
   S.pending.push(d);
   savePending();
-  // Apply to balance now? (default ON — most natural flow when logging real-world transaction)
-  // owe_me: I lent them money → cash leaves my hand → debt_out
-  // owe_them: they gave me money → cash enters my hand → debt_in
-  // These types affect cash balance but NOT Total Spent / Total Income.
   if(S.debtForm.applyNow){
     if(d.type==="owe_me"){
-      var e1={id:uid(),amount:orig,category:"other",desc:"Lent to "+person+(d.desc?" · "+d.desc:""),date:td(),ts:Date.now(),type:"debt_out"};
+      var e1={id:uid(),amount:orig,category:"other",desc:"Lent to "+person+(d.desc?" · "+d.desc:""),date:td(),ts:Date.now(),type:"debt_out",editLog:[]};
+      d.origEntryId=e1.id;
       S.data.push(e1);
       api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"debt_out"});
     }else{
-      var e2={id:uid(),amount:orig,category:"other_inc",desc:"Borrowed from "+person+(d.desc?" · "+d.desc:""),date:td(),ts:Date.now(),type:"debt_in"};
+      var e2={id:uid(),amount:orig,category:"other_inc",desc:"Borrowed from "+person+(d.desc?" · "+d.desc:""),date:td(),ts:Date.now(),type:"debt_in",editLog:[]};
+      d.origEntryId=e2.id;
       S.data.push(e2);
       api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"debt_in"});
     }
+    savePending();
   }
   var didApply=S.debtForm.applyNow;
   S.debtForm={person:"",amount:"",type:"owe_me",desc:"",applyNow:true};
@@ -1670,6 +1731,33 @@ function saveEditDebt(){
   var oldAmount=d.amount;
   var newAmount=num(f.amount);
   var diff=newAmount-oldAmount;
+  var now=Date.now();
+
+  // ── FIX: also update the origEntry in S.data so balance history reflects the edit ──
+  if(d.origEntryId){
+    for(var i=0;i<S.data.length;i++){
+      if(S.data[i].id===d.origEntryId){
+        var ent=S.data[i];
+        // record edit log before changing
+        if(!ent.editLog)ent.editLog=[];
+        ent.editLog.push({
+          ts:now,
+          oldAmount:ent.amount,
+          oldDesc:ent.desc,
+          changedBy:"debt edit"
+        });
+        // update the entry
+        ent.amount=newAmount;
+        ent.desc=(d.type==="owe_me"?"Lent to ":"Borrowed from ")+f.person.trim()+(f.desc?" · "+f.desc:"");
+        ent.editedAt=now;
+        // sync to server
+        api({action:"delete",id:ent.id});
+        api({action:"add",id:ent.id,amount:ent.amount,category:ent.category,desc:ent.desc,date:ent.date,type:ent.type});
+        break;
+      }
+    }
+  }
+
   d.person=f.person.trim();
   d.amount=newAmount;
   d.remaining=Math.max(0,d.remaining+diff);
@@ -1792,9 +1880,11 @@ function mkRow(e){
   var glTag=(e.gl_debit&&S.ccEnabled)?'<div class="gl-tag">'+e.gl_debit+' → '+e.gl_credit+'</div>':"";
   var ccBadge=isCC?'<span class="cc-badge">💳 CC</span>':"";
   var debtBadge=(isDebtIn||isDebtOut||(isDebt&&!isCC&&!isCCpay))?'<span class="debt-badge">📒 Debt</span>':"";
+  var editBadge=(e.editedAt)?'<span style="font-size:8px;color:var(--txt3);margin-left:4px" title="Edited '+new Date(e.editedAt).toLocaleString()+'">✏️</span>':"";
   return '<div class="rw '+rowClass+'">'+
     '<div class="ic" style="background:'+c.c+'18">'+c.i+'</div>'+
-    '<div class="nfo"><div class="nm">'+(e.desc||c.l)+ccBadge+debtBadge+'</div><div class="dt">'+e.date+(ts2t(e.ts)?' · '+ts2t(e.ts):'')+'</div>'+glTag+'</div>'+
+    '<div class="nfo"><div class="nm">'+(e.desc||c.l)+ccBadge+debtBadge+editBadge+'</div>'+
+    '<div class="dt">'+e.date+(ts2t(e.ts)?' · '+ts2t(e.ts):'')+(e.editedAt?' · edited '+ts2date(e.editedAt):'')+'</div>'+glTag+'</div>'+
     '<div class="am '+amClass+'" style="'+amColor+'">'+prefix+fmt(e.amount)+'</div>'+
     '<button class="ed-btn" onclick="openEd(\''+e.id+'\')">✏️</button></div>';
 }
@@ -1893,9 +1983,10 @@ function doRender(){
 
   // ── COMPUTED ──
   var tI=tot(getI()),tE=tot(getE());
+  var pI=tot(getPeriodI()),pE=tot(getPeriodE()); // period-filtered
   var ccLiab=ccLiability();
   var cash=cashBal();
-  var bal=S.ccEnabled?netPos():(S.openBal+tI-tE);
+  var bal=S.ccEnabled?netPos():cash;
   var ld=lastDep();
   var todayAll=S.data.filter(function(e){return e.date===td();}).slice().sort(function(a,b){return(b.ts||0)-(a.ts||0);});
   var me=S.data.filter(function(e){return e.date&&e.date.indexOf(S.vm)===0;});
@@ -1928,17 +2019,32 @@ function doRender(){
     '<div class="bal-tap-hint">tap for history</div>'+
     '<div class="bal-label">'+(S.ccEnabled?'Net Position':'Total Balance')+'</div>'+
     '<div class="bal-amount '+(bal>=0?"bal-pos":"bal-neg")+'">'+(bal>=0?"":"-")+fmt(bal)+'</div>'+
+    // period tabs — stop propagation so clicking them doesn't open history modal
+    '<div class="period-tabs" onclick="event.stopPropagation()">'+
+    ['day','month','year','all'].map(function(p){
+      var lbl={day:'Today',month:'Month',year:'Year',all:'All'}[p];
+      return '<button class="period-tab'+(S.balPeriod===p?' on':'')+'" onclick="S.balPeriod=\''+p+'\';localStorage.setItem(\'ex_balperiod\',\''+p+'\');R()">'+lbl+'</button>';
+    }).join('')+
+    '</div>'+
     '<div class="bal-stats">';
   if(S.ccEnabled){
     h+='<div class="bal-stat"><div class="bs-label">Cash</div><div class="bs-val bs-g">'+fmt(cash)+'</div></div>'+
     '<div class="bal-stat"><div class="bs-label">CC Liability</div><div class="bs-val" style="color:#d8b4fe">'+fmt(ccLiab)+'</div></div>'+
     '</div>'+
     '<div class="bal-stats" style="margin-top:6px">'+
-    '<div class="bal-stat"><div class="bs-label">Total Income</div><div class="bs-val bs-g">'+fmt(tI)+'</div></div>'+
-    '<div class="bal-stat"><div class="bs-label">Total Spent</div><div class="bs-val bs-r">'+fmt(tE)+'</div></div>';
+    '<div class="bal-stat" onclick="event.stopPropagation();S.page=\'report\';R()">'+
+      '<div class="bs-label">Income <span style="opacity:.6;font-size:8px">'+periodLabel()+'</span></div>'+
+      '<div class="bs-val bs-g">'+fmt(pI)+'</div></div>'+
+    '<div class="bal-stat" onclick="event.stopPropagation();S.page=\'report\';R()">'+
+      '<div class="bs-label">Spent <span style="opacity:.6;font-size:8px">'+periodLabel()+'</span></div>'+
+      '<div class="bs-val bs-r">'+fmt(pE)+'</div></div>';
   }else{
-    h+='<div class="bal-stat"><div class="bs-label">Total Income</div><div class="bs-val bs-g">'+fmt(tI)+'</div></div>'+
-    '<div class="bal-stat"><div class="bs-label">Total Spent</div><div class="bs-val bs-r">'+fmt(tE)+'</div></div>';
+    h+='<div class="bal-stat" onclick="event.stopPropagation();S.page=\'report\';R()">'+
+      '<div class="bs-label">Income <span style="opacity:.6;font-size:8px">'+periodLabel()+'</span></div>'+
+      '<div class="bs-val bs-g">'+fmt(pI)+'</div></div>'+
+    '<div class="bal-stat" onclick="event.stopPropagation();S.page=\'report\';R()">'+
+      '<div class="bs-label">Spent <span style="opacity:.6;font-size:8px">'+periodLabel()+'</span></div>'+
+      '<div class="bs-val bs-r">'+fmt(pE)+'</div></div>';
   }
   h+='</div>';
   if(ld){
@@ -2390,14 +2496,17 @@ function doRender(){
           var isCCpay=e.type==="cc_payment";
           var c=isCCpay?{i:"💳",l:"CC Payment",c:"#8b5cf6"}:gc(e.category);
           var timeStr=ts2t(e.ts);
-          var itemClass=isI?"inc":isCC?"ccl":"exp";
-          var amClass=isI?"am-g":isCC?"":"am-r";
-          var amStyle=isCC?"color:var(--purple)":isCCpay?"color:var(--purple)":"";
+          var editedStr=e.editedAt?' <span style="font-size:9px;color:var(--txt3)">(edited '+ts2date(e.editedAt)+')</span>':"";
+          var itemClass=(e.type==="income"||e.type==="debt_in")?"inc":(e.type==="cc_charge")?"ccl":"exp";
+          var amClass=(e.type==="income"||e.type==="debt_in")?"am-g":(e.type==="cc_charge")?"":"am-r";
+          var amStyle=(e.type==="cc_charge")?"color:var(--purple)":(e.type==="cc_payment")?"color:var(--purple)":
+                      (e.type==="debt_in"||e.type==="debt_out")?"color:var(--gold)":"";
+          var prefix=(e.type==="income"||e.type==="debt_in")?"+":"−";
           md+='<div class="bh-item '+itemClass+'">'+
             '<div class="bh-ic" style="background:'+c.c+'20">'+c.i+'</div>'+
-            '<div class="bh-info"><div class="bh-title">'+(e.desc||c.l)+(isCC?' <span class="cc-badge">CC</span>':'')+'</div>'+
-            '<div class="bh-meta">'+c.l+' · '+e.date+(timeStr?' · '+timeStr:'')+'</div></div>'+
-            '<div class="bh-amt '+amClass+'" style="'+amStyle+'">'+(isI?"+":"−")+fmt(e.amount)+'</div></div>';
+            '<div class="bh-info"><div class="bh-title">'+(e.desc||c.l)+(e.type==="cc_charge"?' <span class="cc-badge">CC</span>':'')+(e.type==="debt_in"||e.type==="debt_out"?' <span class="debt-badge">📒</span>':'')+'</div>'+
+            '<div class="bh-meta">'+c.l+' · '+e.date+(timeStr?' · '+timeStr:'')+editedStr+'</div></div>'+
+            '<div class="bh-amt '+amClass+'" style="'+amStyle+'">'+prefix+fmt(e.amount)+'</div></div>';
         });
       }
       md+='<button class="btn btn-neutral" onclick="S.modal=null;S.formError=\'\';R()">Close</button>';
@@ -2570,8 +2679,22 @@ function doRender(){
                   :isCCpay?"\" style=\"background:var(--purple);color:#fff"
                   :isDebtMov?"\" style=\"background:var(--gold);color:#fff"
                   :"btn-e";
+      // show edit history if exists
+      var editLogHtml="";
+      var origEntry=null;
+      for(var ei=0;ei<S.data.length;ei++){if(S.data[ei].id===f.id){origEntry=S.data[ei];break;}}
+      if(origEntry&&origEntry.editLog&&origEntry.editLog.length){
+        editLogHtml='<div style="margin-top:10px"><div style="font-size:9px;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Edit History</div>';
+        origEntry.editLog.slice().reverse().forEach(function(el){
+          editLogHtml+='<div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--txt3);padding:4px 0;border-bottom:1px solid var(--border)">'+
+            '<span>was '+fmt(el.oldAmount)+(el.oldDesc&&el.oldDesc!==f.desc?' · "'+el.oldDesc+'"':'')+'</span>'+
+            '<span style="color:var(--txt3)">'+ts2date(el.ts)+'</span></div>';
+        });
+        editLogHtml+='</div>';
+      }
       md+='<label class="lb">Date</label>'+
         '<input class="inp-sm" type="date" value="'+f.date+'" onchange="S.editForm.date=this.value">'+
+        editLogHtml+
         (S.formError?'<div class="form-err">'+S.formError+'</div>':'')+
         '<button class="btn '+btnStyle+'" onclick="updEnt()">Update</button>'+
         '<button class="btn btn-del" onclick="delEnt(\''+f.id+'\')">🗑 Delete Entry</button>';
