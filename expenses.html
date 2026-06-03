@@ -333,20 +333,23 @@ button,input,select{font-family:'Nunito',sans-serif}
 .empty span{display:block;font-size:28px;margin-bottom:8px}
 
 /* ── TRANSACTION ROW ── */
+.rw-wrap{margin-bottom:6px;animation:slideIn .25s ease}
+.rw-wrap.rw-open .rw{border-bottom-left-radius:0;border-bottom-right-radius:0}
 .rw{
   display:flex;align-items:center;gap:10px;
   background:var(--card);
   border:1px solid var(--border);
   border-radius:14px;
   padding:11px 13px;
-  margin-bottom:6px;
-  transition:border-color .15s;
-  animation:slideIn .25s ease;
+  transition:border-color .15s,background .15s;
+  cursor:pointer;
 }
 @keyframes slideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .rw:active{border-color:var(--border2)}
 .rw.inc-rw{border-left:3px solid var(--green)}
 .rw.exp-rw{border-left:3px solid transparent}
+.rw-chev{font-size:9px;color:var(--txt3);flex-shrink:0;width:12px;text-align:center;transition:color .15s}
+.rw-open .rw-chev,.dc-open .rw-chev{color:var(--green)}
 .ic{
   width:38px;height:38px;border-radius:11px;
   display:flex;align-items:center;justify-content:center;
@@ -368,6 +371,39 @@ button,input,select{font-family:'Nunito',sans-serif}
   border-radius:6px;transition:color .15s;
 }
 .ed-btn:active{color:var(--txt)}
+/* ── EXPAND DETAILS PANEL (shared by rows & debts) ── */
+.row-details{
+  background:var(--card2);
+  border:1px solid var(--border);
+  border-top:none;
+  border-radius:0 0 14px 14px;
+  padding:10px 14px 12px;
+  margin-bottom:0;
+  animation:expandDown .2s ease;
+}
+@keyframes expandDown{from{opacity:0}to{opacity:1}}
+.rd-row{
+  display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
+  padding:5px 0;border-bottom:1px solid var(--border);
+  font-size:11px;
+}
+.rd-row:last-of-type{border-bottom:none}
+.rd-k{color:var(--txt3);font-weight:600;flex-shrink:0}
+.rd-v{color:var(--txt);text-align:right;word-break:break-word;font-weight:500}
+.rd-actions{margin-top:10px}
+.rd-edit-btn{
+  width:100%;padding:9px;border:1px solid var(--border2);
+  background:var(--bg3);color:var(--txt2);
+  border-radius:10px;font-size:12px;font-weight:700;
+  cursor:pointer;font-family:'Nunito',sans-serif;
+}
+.rd-edit-btn:active{background:var(--card)}
+/* debt details sits inside the card, so square off its corners */
+.debt-card .row-details{
+  border-radius:10px;border:1px solid var(--border);
+  margin:0 0 12px;
+}
+
 
 /* ── STATS ROW ── */
 .stats{display:flex;gap:6px;margin-bottom:8px}
@@ -899,6 +935,18 @@ function ml(k){var p=k.split("-");return MN[parseInt(p[1])-1]+" "+p[0];}
 function gc(id){var a=EC.concat(IC);for(var i=0;i<a.length;i++){if(a[i].id===id)return a[i];}return EC[8];}
 function num(v){var n=parseFloat(v);return isNaN(n)?0:n;}
 function ts2t(ts){if(!ts)return"";var d=new Date(typeof ts==="number"?ts:parseInt(ts));if(isNaN(d.getTime()))return"";return d.getHours().toString().padStart(2,"0")+":"+d.getMinutes().toString().padStart(2,"0");}
+function escHtml(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+// full human-readable date+time of when something was recorded
+function ts2full(ts){
+  if(!ts)return"Unknown";
+  var d=new Date(typeof ts==="number"?ts:parseInt(ts));
+  if(isNaN(d.getTime()))return"Unknown";
+  return DN[d.getDay()]+", "+d.getDate()+" "+MN[d.getMonth()]+" "+d.getFullYear()+
+    " · "+d.getHours().toString().padStart(2,"0")+":"+d.getMinutes().toString().padStart(2,"0");
+}
+function pmLabel(pm){
+  return pm==="cash"?"💵 Cash":pm==="debit"?"🏧 Debit":pm==="credit"?"💳 Credit Card":pm==="ewallet"?"📱 E-Wallet":"—";
+}
 function uid(){
   if(typeof crypto!=="undefined"&&crypto.randomUUID){return crypto.randomUUID();}
   // fallback: high-entropy (ts + 3 random segments)
@@ -960,15 +1008,17 @@ function syncDebtToServer(d){
   api({action:"delete_debt",id:d.id});
   api({action:"add_debt",id:d.id,person:d.person,amount:d.amount,type:d.type,desc:d.desc||"",date:d.date,remaining:d.remaining,payments:JSON.stringify(d.payments||[])});
 }
-// recalculate remaining from payments.
-// d.amount = original + sum(additions). remaining = d.amount - sum(real payments).
-// Additions are NOT payments — they increase what's owed, already folded into d.amount.
+// recalculate remaining from payments
 function recalcRemaining(d){
   var totalPaid=0;
+  var totalAdded=0;
   (d.payments||[]).forEach(function(p){
-    if(!p.isAddition) totalPaid+=num(p.amount);
+    if(p.isAddition) totalAdded+=num(p.amount);
+    else totalPaid+=num(p.amount);
   });
-  d.remaining=Math.max(0,num(d.amount)-totalPaid);
+  // original amount = base amount (without additions)
+  // d.amount already includes additions, so remaining = d.amount - totalPaid
+  d.remaining=Math.max(0,d.amount-totalPaid);
 }
 
 // ─────────────────────────────────────────
@@ -1006,6 +1056,8 @@ var S={
   addToDebtForm:{id:"",amount:"",note:"",date:"",applyNow:false},
   editPayForm:{debtId:"",payIdx:-1,amount:"",note:"",date:""},
   ccPayForm:{amount:"",date:td()},
+  expandedRow:null,
+  expandedDebt:null,
 };
 
 function applyTheme(){
@@ -1300,22 +1352,15 @@ function payCCBill(){
   if(errD){S.formError=errD;R();return;}
   S.formError="";
   var amt=num(f.amount);
-  if(amt<=0){S.formError="Enter an amount greater than zero";R();return;}
   var liability=ccLiability();
-  // Allow paying any amount — even more than the tracked liability, because the
-  // real CC bill can include charges not yet entered. Cash decreases by the full
-  // amount; paying more than tracked makes liability negative (a credit balance).
-  var e={id:uid(),amount:amt,category:"cc_payment",
-    desc:"CC bill payment"+(amt>liability&&liability>0?" (incl. untracked)":""),
-    date:f.date||td(),ts:Date.now(),type:"cc_payment",pm:"cash",gl_debit:"2000",gl_credit:"1000"};
+  if(liability<=0){toast("No CC liability to pay");return;}
+  if(amt>liability){amt=liability;toast("Capped to liability "+fmt(liability));}
+  // cc_payment: Cash ↓, Liability ↓, NO new expense
+  var e={id:uid(),amount:amt,category:"cc_payment",desc:"CC bill payment",date:f.date||td(),ts:Date.now(),type:"cc_payment",pm:"cash",gl_debit:"2000",gl_credit:"1000"};
   S.data.push(e);
   S.ccPayForm={amount:"",date:td()};
   S.modal=null;R();
-  if(amt>liability&&liability>=0){
-    toast("Paid "+fmt(amt)+" ✓ (covers untracked charges)");
-  }else{
-    toast("CC bill paid "+fmt(amt)+" ✓");
-  }
+  toast("CC bill paid "+fmt(amt)+" ✓");
   api({action:"add",id:e.id,amount:e.amount,category:e.category,desc:e.desc,date:e.date,type:"cc_payment",pm:"cash",gl_debit:"2000",gl_credit:"1000"});
 }
 function updEnt(){
@@ -1360,45 +1405,15 @@ function updEnt(){
   api({action:"add",id:f.id,amount:f.amount,category:f.cat,desc:f.desc||"",date:f.date,type:actualType,pm:pm,gl_debit:glDebit,gl_credit:glCredit});
 }
 function delEnt(id){
-  // If this entry is a debt movement linked to a debt, deleting it directly
-  // would desync the debt record. Redirect the user to manage it from Debts.
-  var ent=null;
-  for(var i=0;i<S.data.length;i++){if(S.data[i].id===id){ent=S.data[i];break;}}
-  if(ent&&(ent.type==="debt_in"||ent.type==="debt_out")){
-    var linkedDebt=findLinkedDebt(id);
-    if(linkedDebt){
-      alert("This is a debt movement linked to "+linkedDebt.person+"'s debt.\n\nTo keep your balance correct, edit or delete it from the Debts tab (open the debt → manage payments), not from here.");
-      return;
-    }
-  }
   if(!confirm("Delete this entry?"))return;
   S.data=S.data.filter(function(e){return e.id!==id;});
   S.modal=null;R();toast("Deleted");
   api({action:"delete",id:id});
 }
-// find the debt (if any) that owns this balance entry id
-function findLinkedDebt(entryId){
-  for(var i=0;i<S.pending.length;i++){
-    var d=S.pending[i];
-    if(d.origEntryId===entryId)return d;
-    if(d.payments){
-      for(var j=0;j<d.payments.length;j++){
-        if(d.payments[j].linkId===entryId)return d;
-      }
-    }
-  }
-  return null;
-}
 function openEd(id){
   for(var i=0;i<S.data.length;i++){
     if(S.data[i].id===id){
       var d=S.data[i];
-      // debt movements are managed from the Debts tab to keep records in sync
-      if((d.type==="debt_in"||d.type==="debt_out")&&findLinkedDebt(id)){
-        var ld=findLinkedDebt(id);
-        alert("This is a debt movement for "+ld.person+".\n\nTo change it, go to the Debts tab and edit the debt or its payments there — that keeps your balance accurate.");
-        return;
-      }
       S.editForm={id:id,amount:String(d.amount),cat:d.category,desc:d.desc||"",date:d.date,type:d.type||"expense",pm:d.pm||"cash"};
       S.modal="edit";R();return;
     }
@@ -1469,8 +1484,9 @@ function addDebt(){
   S.formError="";
   var orig=num(S.debtForm.amount);
   var person=S.debtForm.person.trim();
-  var d={id:uid(),person:person,amount:orig,remaining:orig,type:S.debtForm.type,desc:S.debtForm.desc,date:td(),payments:[],origEntryId:null};
+  var d={id:uid(),person:person,amount:orig,remaining:orig,type:S.debtForm.type,desc:S.debtForm.desc,date:td(),payments:[]};
   S.pending.push(d);
+  savePending();
   // Apply to balance now? (default ON — most natural flow when logging real-world transaction)
   // owe_me: I lent them money → cash leaves my hand → debt_out
   // owe_them: they gave me money → cash enters my hand → debt_in
@@ -1478,17 +1494,14 @@ function addDebt(){
   if(S.debtForm.applyNow){
     if(d.type==="owe_me"){
       var e1={id:uid(),amount:orig,category:"other",desc:"Lent to "+person+(d.desc?" · "+d.desc:""),date:td(),ts:Date.now(),type:"debt_out"};
-      d.origEntryId=e1.id;
       S.data.push(e1);
       api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"debt_out"});
     }else{
       var e2={id:uid(),amount:orig,category:"other_inc",desc:"Borrowed from "+person+(d.desc?" · "+d.desc:""),date:td(),ts:Date.now(),type:"debt_in"};
-      d.origEntryId=e2.id;
       S.data.push(e2);
       api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"debt_in"});
     }
   }
-  savePending();
   var didApply=S.debtForm.applyNow;
   S.debtForm={person:"",amount:"",type:"owe_me",desc:"",applyNow:true};
   S.modal=null;R();
@@ -1521,36 +1534,32 @@ function addPartialPay(){
   if(idx===-1){toast("Debt not found");return;}
   var d=S.pending[idx];
   var paid=num(f.amount);
-  var wasCapped=false;
-  if(paid>d.remaining){paid=d.remaining;wasCapped=true;}
-  if(paid<=0){S.formError="Nothing left to pay on this debt";R();return;}
+  if(paid>d.remaining)paid=d.remaining;
 
   // Always apply to balance — uses debt_in/debt_out so it doesn't pollute Total Income/Spent
-  // linkId connects this payment to its balance entry so edit/delete stay in sync.
-  var linkId=uid();
-  var payEntry={amount:paid,date:f.date||td(),note:f.note||"",applied:true,linkId:linkId};
+  var payEntry={amount:paid,date:f.date||td(),note:f.note||"",applied:true};
 
   if(d.type==="owe_me"){
     // they paid me back → cash enters my hand → debt_in
-    var e1={id:linkId,amount:paid,category:"other_inc",desc:"Payment from "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"debt_in"};
+    var e1={id:uid(),amount:paid,category:"other_inc",desc:"Payment from "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"debt_in"};
     S.data.push(e1);
     api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"debt_in"});
   }else{
     // I paid them → cash leaves my hand → debt_out
-    var e2={id:linkId,amount:paid,category:"other",desc:"Payment to "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"debt_out"};
+    var e2={id:uid(),amount:paid,category:"other",desc:"Payment to "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"debt_out"};
     S.data.push(e2);
     api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"debt_out"});
   }
 
   d.payments=d.payments||[];
   d.payments.push(payEntry);
-  recalcRemaining(d);
+  d.remaining=Math.max(0,d.remaining-paid);
   savePending();
   syncDebtToServer(d);
   S.modal=null;
   S.partialForm={id:"",amount:"",note:"",date:td(),applyNow:false};
   R();
-  toast(wasCapped?("Capped to remaining "+fmt(paid)+" ✓"):("Payment "+fmt(paid)+" recorded ✓"));
+  toast("Payment "+fmt(paid)+" recorded ✓");
 }
 
 // applyPayment — for legacy un-applied payment entries. Uses debt_in/debt_out.
@@ -1560,17 +1569,15 @@ function applyPayment(debtId,pIdx){
   var d=S.pending[didx];
   var p=d.payments[pIdx];
   if(!p||p.applied)return;
-  var linkId=uid();
   p.applied=true;
-  p.linkId=linkId;
   if(d.type==="owe_me"){
     // they paid me back → debt_in (cash in, doesn't count as income)
-    var e1={id:linkId,amount:p.amount,category:"other_inc",desc:"Payment from "+d.person+(p.note?" · "+p.note:""),date:p.date,ts:Date.now(),type:"debt_in"};
+    var e1={id:uid(),amount:p.amount,category:"other_inc",desc:"Payment from "+d.person+(p.note?" · "+p.note:""),date:p.date,ts:Date.now(),type:"debt_in"};
     S.data.push(e1);
     api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"debt_in"});
   }else{
     // I paid them → debt_out (cash out, doesn't count as expense)
-    var e2={id:linkId,amount:p.amount,category:"other",desc:"Payment to "+d.person+(p.note?" · "+p.note:""),date:p.date,ts:Date.now(),type:"debt_out"};
+    var e2={id:uid(),amount:p.amount,category:"other",desc:"Payment to "+d.person+(p.note?" · "+p.note:""),date:p.date,ts:Date.now(),type:"debt_out"};
     S.data.push(e2);
     api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"debt_out"});
   }
@@ -1583,26 +1590,23 @@ function settleDebt(id){
   var idx=findDebt(id);
   if(idx===-1)return;
   var d=S.pending[idx];
-  recalcRemaining(d);
-  var remaining=num(d.remaining);
+  var remaining=num(d.remaining!==undefined?d.remaining:d.amount);
+  var toApply=remaining;
 
   var msg="Mark as fully settled?";
-  if(remaining>0){
-    msg+="\n\nRemaining "+fmt(remaining)+" will move "+
+  if(toApply>0){
+    msg+="\n\nRemaining "+fmt(toApply)+" will move "+
       (d.type==="owe_me"?"INTO":"OUT OF")+" your balance.";
-  }else{
-    msg+="\n\nThis debt is already fully paid — it will just be cleared from the list.";
   }
   if(!confirm(msg))return;
 
-  if(remaining>0){
-    var linkId=uid();
+  if(toApply>0){
     if(d.type==="owe_me"){
-      var e1={id:linkId,amount:remaining,category:"other_inc",desc:"Settled: "+d.person,date:td(),ts:Date.now(),type:"debt_in"};
+      var e1={id:uid(),amount:toApply,category:"other_inc",desc:"Settled: "+d.person,date:td(),ts:Date.now(),type:"debt_in"};
       S.data.push(e1);
       api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"debt_in"});
     }else{
-      var e2={id:linkId,amount:remaining,category:"other",desc:"Settled: "+d.person,date:td(),ts:Date.now(),type:"debt_out"};
+      var e2={id:uid(),amount:toApply,category:"other",desc:"Settled: "+d.person,date:td(),ts:Date.now(),type:"debt_out"};
       S.data.push(e2);
       api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"debt_out"});
     }
@@ -1642,32 +1646,29 @@ function addToDebt(){
   if(idx===-1){toast("Debt not found ⚠");return;}
   var d=S.pending[idx];
   var added=num(f.amount);
-  if(added<=0){S.formError="Amount must be greater than zero";R();return;}
 
   // add to ONLY this debt's total and remaining
   d.amount=d.amount+added;
   d.remaining=d.remaining+added;
 
-  var linkId=f.applyNow?uid():null;
   d.payments=d.payments||[];
   d.payments.push({
     amount:added,
     date:f.date||td(),
     note:(f.note||"")+"  [+added to debt]",
     applied:!!f.applyNow,
-    isAddition:true,
-    linkId:linkId
+    isAddition:true
   });
 
   if(f.applyNow){
     if(d.type==="owe_me"){
       // I lent more → cash leaves my hand → debt_out
-      var e1={id:linkId,amount:added,category:"other",desc:"Added to debt: "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"debt_out"};
+      var e1={id:uid(),amount:added,category:"other",desc:"Added to debt: "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"debt_out"};
       S.data.push(e1);
       api({action:"add",id:e1.id,amount:e1.amount,category:e1.category,desc:e1.desc,date:e1.date,type:"debt_out"});
     }else{
       // I borrowed more → cash enters my hand → debt_in
-      var e2={id:linkId,amount:added,category:"other_inc",desc:"Added to debt: "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"debt_in"};
+      var e2={id:uid(),amount:added,category:"other_inc",desc:"Added to debt: "+d.person+(f.note?" · "+f.note:""),date:f.date||td(),ts:Date.now(),type:"debt_in"};
       S.data.push(e2);
       api({action:"add",id:e2.id,amount:e2.amount,category:e2.category,desc:e2.desc,date:e2.date,type:"debt_in"});
     }
@@ -1682,22 +1683,11 @@ function addToDebt(){
 }
 
 function delDebt(id){
-  if(!confirm("Delete this debt?\n\nThis also removes any balance movements it created (lent/borrowed/payments)."))return;
-  var idx=findDebt(id);
-  if(idx===-1)return;
-  var d=S.pending[idx];
-  // collect all linked balance-entry ids: origin + each payment's linkId
-  var linkedIds=[];
-  if(d.origEntryId)linkedIds.push(d.origEntryId);
-  (d.payments||[]).forEach(function(p){if(p.linkId)linkedIds.push(p.linkId);});
-  if(linkedIds.length){
-    S.data=S.data.filter(function(e){return linkedIds.indexOf(e.id)===-1;});
-    linkedIds.forEach(function(lid){api({action:"delete",id:lid});});
-  }
-  S.pending.splice(idx,1);
+  if(!confirm("Delete this debt?"))return;
+  S.pending=S.pending.filter(function(x){return x.id!==id;});
   savePending();
   api({action:"delete_debt",id:id});
-  S.modal=null;R();toast("Debt & its balance movements removed");
+  S.modal=null;R();toast("Deleted");
 }
 
 // ── NEW: Edit Debt ──
@@ -1727,33 +1717,14 @@ function saveEditDebt(){
   var idx=findDebt(f.id);
   if(idx===-1)return;
   var d=S.pending[idx];
+  var oldAmount=d.amount;
   var newAmount=num(f.amount);
-  // recompute remaining from scratch using new total amount
+  var diff=newAmount-oldAmount;
   d.person=f.person.trim();
+  d.amount=newAmount;
+  d.remaining=Math.max(0,d.remaining+diff);
   d.type=f.type;
   d.desc=f.desc;
-  d.amount=newAmount;
-  recalcRemaining(d);
-
-  // ── keep the linked balance entry (the original "Lent to / Borrowed from") in sync ──
-  if(d.origEntryId){
-    for(var i=0;i<S.data.length;i++){
-      if(S.data[i].id===d.origEntryId){
-        var ent=S.data[i];
-        // figure out how much of the new total is the "original" part (total minus additions)
-        var addSum=0;
-        (d.payments||[]).forEach(function(p){if(p.isAddition)addSum+=num(p.amount);});
-        var basePart=Math.max(0,newAmount-addSum);
-        ent.amount=basePart;
-        ent.type=(d.type==="owe_me")?"debt_out":"debt_in";
-        ent.category=(d.type==="owe_me")?"other":"other_inc";
-        ent.desc=(d.type==="owe_me"?"Lent to ":"Borrowed from ")+d.person+(d.desc?" · "+d.desc:"");
-        api({action:"delete",id:ent.id});
-        api({action:"add",id:ent.id,amount:ent.amount,category:ent.category,desc:ent.desc,date:ent.date,type:ent.type});
-        break;
-      }
-    }
-  }
   savePending();
   syncDebtToServer(d);
   S.modal=null;R();toast("Debt updated ✓");
@@ -1794,32 +1765,15 @@ function saveEditPay(){
   if(!p)return;
 
   var newAmt=num(f.amount);
-
-  // if this is an addition, the difference changes the debt total too
-  if(p.isAddition){
-    var addDiff=newAmt-num(p.amount);
-    d.amount=Math.max(0,num(d.amount)+addDiff);
-  }
+  var oldAmt=num(p.amount);
 
   p.amount=newAmt;
   p.date=f.date;
   p.note=f.note+(p.isAddition?"  [+added to debt]":"");
 
-  // ── keep the linked balance entry in sync ──
-  if(p.linkId){
-    for(var i=0;i<S.data.length;i++){
-      if(S.data[i].id===p.linkId){
-        var ent=S.data[i];
-        ent.amount=newAmt;
-        ent.date=f.date;
-        api({action:"delete",id:ent.id});
-        api({action:"add",id:ent.id,amount:ent.amount,category:ent.category,desc:ent.desc,date:ent.date,type:ent.type});
-        break;
-      }
-    }
-  }
-
+  // recalculate remaining
   recalcRemaining(d);
+
   savePending();
   syncDebtToServer(d);
   S.modal=null;R();toast("Payment updated ✓");
@@ -1833,15 +1787,9 @@ function delPayEntry(debtId,payIdx){
   var p=d.payments[payIdx];
   if(!p)return;
 
-  // if it was an addition, subtract from total amount owed
+  // if it was an addition, subtract from total amount
   if(p.isAddition){
-    d.amount=Math.max(0,num(d.amount)-num(p.amount));
-  }
-
-  // ── remove the linked balance entry so cash is restored ──
-  if(p.linkId){
-    S.data=S.data.filter(function(e){return e.id!==p.linkId;});
-    api({action:"delete",id:p.linkId});
+    d.amount=Math.max(0,d.amount-num(p.amount));
   }
 
   d.payments.splice(payIdx,1);
@@ -1876,6 +1824,69 @@ function weekData(){
 // ─────────────────────────────────────────
 //  BUILD FUNCTIONS
 // ─────────────────────────────────────────
+// build the expandable details panel for a transaction row
+function mkRowDetails(e){
+  var rows=[];
+  var typeLabel=e.type==="income"?"Income":e.type==="expense"?"Expense":e.type==="cc_charge"?"Credit Card charge":e.type==="cc_payment"?"CC bill payment":e.type==="debt_in"?"Debt — money in":e.type==="debt_out"?"Debt — money out":e.type;
+  rows.push(["Recorded",ts2full(e.ts)]);
+  rows.push(["Transaction date",e.date||"—"]);
+  rows.push(["Type",typeLabel]);
+  if(e.type==="expense"||e.type==="cc_charge"){
+    rows.push(["Category",gc(e.category).i+" "+gc(e.category).l]);
+    rows.push(["Payment method",pmLabel(e.pm||"cash")]);
+    rows.push(["CC module then",(e.type==="cc_charge"?"ON (charged to card)":(e.pm==="credit"?"was credit, now cash":"OFF / cash"))]);
+  }else if(e.type==="income"){
+    rows.push(["Source",gc(e.category).i+" "+gc(e.category).l]);
+  }else if(e.type==="cc_payment"){
+    rows.push(["Effect","Cash ↓ · CC liability ↓"]);
+  }else if(e.type==="debt_in"||e.type==="debt_out"){
+    rows.push(["Effect",e.type==="debt_in"?"Cash entered balance":"Cash left balance"]);
+    rows.push(["Counts in totals","No — debt movement only"]);
+  }
+  if(e.gl_debit||e.gl_credit){
+    rows.push(["GL entry",(e.gl_debit||"—")+" → "+(e.gl_credit||"—")]);
+  }
+  rows.push(["Entry ID",e.id]);
+  var html='<div class="row-details">';
+  rows.forEach(function(r){
+    html+='<div class="rd-row"><span class="rd-k">'+r[0]+'</span><span class="rd-v">'+escHtml(String(r[1]))+'</span></div>';
+  });
+  html+='<div class="rd-actions"><button class="rd-edit-btn" onclick="event.stopPropagation();openEd(\''+e.id+'\')">✏️ Edit this entry</button></div>';
+  html+='</div>';
+  return html;
+}
+// build the expandable details panel for a debt card
+function mkDebtDetails(d){
+  var isCredit=d.type==="owe_me";
+  var original=num(d.amount);
+  var remaining=num(d.remaining!==undefined?d.remaining:d.amount);
+  var paid=original-remaining;
+  var payments=d.payments||[];
+  var realPays=0,additions=0,appliedCount=0;
+  payments.forEach(function(p){
+    if(p.isAddition)additions+=num(p.amount);
+    else{realPays+=num(p.amount);if(p.applied)appliedCount++;}
+  });
+  var rows=[];
+  rows.push(["Logged on",ts2full(d.date?new Date(d.date+"T00:00:00").getTime():0)]);
+  rows.push(["Direction",isCredit?"🤝 They owe me":"💸 I owe them"]);
+  rows.push(["Original amount",fmt(original-additions)]);
+  if(additions>0)rows.push(["Added later","+"+fmt(additions)]);
+  rows.push(["Current total",fmt(original)]);
+  rows.push(["Paid so far",fmt(paid)]);
+  rows.push(["Remaining",fmt(remaining)]);
+  rows.push(["Payments logged",String(payments.length)+(appliedCount?" ("+appliedCount+" applied to balance)":"")]);
+  rows.push(["Applied to balance",d.origEntryId?"Yes — moved cash when logged":"No — tracking only"]);
+  if(d.desc)rows.push(["Note",d.desc]);
+  rows.push(["Debt ID",d.id]);
+  var html='<div class="row-details">';
+  rows.forEach(function(r){
+    html+='<div class="rd-row"><span class="rd-k">'+r[0]+'</span><span class="rd-v">'+escHtml(String(r[1]))+'</span></div>';
+  });
+  html+='<div class="rd-actions"><button class="rd-edit-btn" onclick="event.stopPropagation();openEditDebt(\''+d.id+'\')">✏️ Edit this debt</button></div>';
+  html+='</div>';
+  return html;
+}
 function mkRow(e){
   var isI=e.type==="income";
   var isCC=e.type==="cc_charge";
@@ -1894,11 +1905,15 @@ function mkRow(e){
   var glTag=(e.gl_debit&&S.ccEnabled)?'<div class="gl-tag">'+e.gl_debit+' → '+e.gl_credit+'</div>':"";
   var ccBadge=isCC?'<span class="cc-badge">💳 CC</span>':"";
   var debtBadge=(isDebtIn||isDebtOut||(isDebt&&!isCC&&!isCCpay))?'<span class="debt-badge">📒 Debt</span>':"";
-  return '<div class="rw '+rowClass+'">'+
+  var expanded=S.expandedRow===e.id;
+  var details=expanded?mkRowDetails(e):"";
+  return '<div class="rw-wrap'+(expanded?" rw-open":"")+'">'+
+    '<div class="rw '+rowClass+'" onclick="S.expandedRow=(S.expandedRow===\''+e.id+'\'?null:\''+e.id+'\');R()">'+
     '<div class="ic" style="background:'+c.c+'18">'+c.i+'</div>'+
     '<div class="nfo"><div class="nm">'+(e.desc||c.l)+ccBadge+debtBadge+'</div><div class="dt">'+e.date+(ts2t(e.ts)?' · '+ts2t(e.ts):'')+'</div>'+glTag+'</div>'+
     '<div class="am '+amClass+'" style="'+amColor+'">'+prefix+fmt(e.amount)+'</div>'+
-    '<button class="ed-btn" onclick="openEd(\''+e.id+'\')">✏️</button></div>';
+    '<span class="rw-chev">'+(expanded?'▲':'▼')+'</span>'+
+    '</div>'+details+'</div>';
 }
 function mkCats(list,sel,path){
   var h='<div class="cg">';
@@ -2057,7 +2072,7 @@ function doRender(){
     ['home','debts','report','history','settings'].map(function(p){
       var icons={home:'🏠',debts:'🤝',report:'📊',history:'📋',settings:'⚙️'};
       var labels={home:'Home',debts:'Debts',report:'Report',history:'History',settings:'Settings'};
-      return '<button class="nv-btn'+(S.page===p?' on':'')+'" onclick="S.page=\''+p+'\';R()">'+
+      return '<button class="nv-btn'+(S.page===p?' on':'')+'" onclick="S.page=\''+p+'\';S.expandedRow=null;S.expandedDebt=null;R()">'+
         '<i>'+icons[p]+'</i>'+labels[p]+'</button>';
     }).join('')+
   '</div>';
@@ -2089,34 +2104,29 @@ function doRender(){
 
     // CC Widget on home (if enabled)
     if(S.ccEnabled){
-      var recentCC=getCCcharges().sort(function(a,b){return(b.ts||0)-(a.ts||0);}).slice(0,5);
+      var unpaidCC=getCCcharges().sort(function(a,b){return(b.ts||0)-(a.ts||0);}).slice(0,5);
       content+='<div class="sec">💳 Credit Card</div>';
-      content+='<div class="cc-summary">';
       if(ccLiab>0){
-        content+='<div class="cc-sum-head"><div><div class="cc-sum-label">Outstanding Liability</div><div class="cc-sum-val">'+fmt(ccLiab)+'</div></div>'+
+        content+='<div class="cc-summary">'+
+          '<div class="cc-sum-head"><div><div class="cc-sum-label">Outstanding Liability</div><div class="cc-sum-val">'+fmt(ccLiab)+'</div></div>'+
           '<button class="btn" style="width:auto;margin:0;padding:8px 16px;font-size:11px;background:var(--purple);color:#fff" onclick="S.ccPayForm={amount:String('+ccLiab+'),date:td()};S.modal=\'ccpay\';R()">Pay Bill</button></div>';
-      }else if(ccLiab<0){
-        content+='<div class="cc-sum-head"><div>'+
-          '<div class="cc-sum-label">Credit Balance (overpaid)</div>'+
-          '<div class="cc-sum-val" style="color:var(--green)">'+fmt(Math.abs(ccLiab))+'</div>'+
-          '<div style="font-size:10px;color:var(--txt3);margin-top:2px">Future charges will use this up.</div></div>'+
-          '<button class="btn" style="width:auto;margin:0;padding:8px 16px;font-size:11px;background:var(--purple);color:#fff" onclick="S.ccPayForm={amount:\'\',date:td()};S.modal=\'ccpay\';R()">Pay More</button></div>';
+        if(unpaidCC.length){
+          content+='<div style="font-size:10px;color:var(--txt3);margin-bottom:6px">Recent CC charges:</div>';
+          unpaidCC.forEach(function(c){
+            var cat=gc(c.category);
+            content+='<div class="cc-charge-item">'+
+              '<span>'+cat.i+'</span>'+
+              '<span style="flex:1;color:var(--txt)">'+(c.desc||cat.l)+'</span>'+
+              '<span style="color:var(--txt3)">'+c.date+'</span>'+
+              '<span style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;color:var(--purple)">'+fmt(c.amount)+'</span></div>';
+          });
+        }
+        content+='</div>';
       }else{
-        content+='<div style="text-align:center;padding:8px 0"><span style="font-size:20px">✨</span>'+
-          '<div style="font-size:13px;font-weight:700;color:var(--green);margin-top:4px">All clear!</div></div>';
+        content+='<div class="cc-summary" style="border-left-color:var(--green);text-align:center;padding:18px">'+
+          '<span style="font-size:24px">✨</span><div style="font-size:13px;font-weight:700;color:var(--green);margin-top:6px">All clear!</div>'+
+          '<div style="font-size:11px;color:var(--txt3);margin-top:4px">No outstanding credit card charges</div></div>';
       }
-      if(recentCC.length){
-        content+='<div style="font-size:10px;color:var(--txt3);margin:'+(ccLiab!==0?'10px':'4px')+' 0 6px">Recent CC charges:</div>';
-        recentCC.forEach(function(c){
-          var cat=gc(c.category);
-          content+='<div class="cc-charge-item">'+
-            '<span>'+cat.i+'</span>'+
-            '<span style="flex:1;color:var(--txt)">'+(c.desc||cat.l)+'</span>'+
-            '<span style="color:var(--txt3)">'+c.date+'</span>'+
-            '<span style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;color:var(--purple)">'+fmt(c.amount)+'</span></div>';
-        });
-      }
-      content+='</div>';
     }
 
     content+='<div class="sec">This Month — '+ml(mk())+'</div>'+
@@ -2178,9 +2188,11 @@ function doRender(){
       var paid=original-remaining;
       var pct=original>0?Math.round(paid/original*100):0;
       var payments=d.payments||[];
+      var expanded=S.expandedDebt===d.id;
 
-      var card='<div class="debt-card '+(isCredit?"owe-me":"owe-them")+'">';
-      card+='<div class="dc-head">'+
+      var card='<div class="debt-card '+(isCredit?"owe-me":"owe-them")+(expanded?" dc-open":"")+'">';
+      // header is clickable to expand details
+      card+='<div class="dc-head" onclick="S.expandedDebt=(S.expandedDebt===\''+d.id+'\'?null:\''+d.id+'\');R()" style="cursor:pointer">'+
         '<div class="dc-left">'+
         '<div class="dc-ic">'+(isCredit?'🤝':'💸')+'</div>'+
         '<div><div class="dc-name">'+d.person+'</div>'+
@@ -2191,8 +2203,13 @@ function doRender(){
         '<div class="dc-remaining" style="color:'+(isCredit?"var(--green)":"var(--red)")+'">'+fmt(remaining)+'</div>'+
         '<div class="dc-orig">of '+fmt(original)+'</div>'+
         '</div>'+
-        '<button class="ed-btn" onclick="openEditDebt(\''+d.id+'\')" style="margin-top:2px">✏️</button>'+
+        '<span class="rw-chev" style="margin-top:2px">'+(expanded?'▲':'▼')+'</span>'+
         '</div></div>';
+
+      // details panel (only when expanded)
+      if(expanded){
+        card+=mkDebtDetails(d);
+      }
 
       card+='<div class="dc-prog-wrap">'+
         '<div class="dc-prog-bar"><div class="dc-prog-fill" style="width:'+pct+'%;background:'+(isCredit?"var(--green)":"var(--red)")+'"></div></div>'+
