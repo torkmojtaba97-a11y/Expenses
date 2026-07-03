@@ -332,7 +332,7 @@ function typeLbl(t){return S.lang==="en"?(t.le||t.l):t.l;}
 function curLabel(cur){return cur==="$"?tr("دلار","Dollar"):tr("پزو","Peso");}
 
 /* ذخیره / بازیابی / مهاجرت */
-function persist(){try{localStorage.setItem("ha_data",JSON.stringify({tx:S.tx,people:S.people,accounts:S.accounts,v:3}));}catch(e){}if(S.syncUrl&&S.syncToken)scheduleSync();}
+function persist(){try{localStorage.setItem("ha_data",JSON.stringify({tx:S.tx,people:S.people,accounts:S.accounts,v:3}));}catch(e){}if(S.syncUrl&&S.syncToken&&S.tx.length>0)scheduleSync();}
 function restore(){try{var raw=localStorage.getItem("ha_data");if(raw){var d=JSON.parse(raw);S.tx=Array.isArray(d.tx)?d.tx:[];S.people=Array.isArray(d.people)?d.people:[];S.accounts=Array.isArray(d.accounts)?d.accounts:[];S._legacyCur=d.currency;S._legacyOpen=d.openBal;}}catch(e){}S.dark=localStorage.getItem("ha_theme")==="dark";}
 function migrate(){
   if(!Array.isArray(S.accounts))S.accounts=[];
@@ -454,8 +454,25 @@ var _syncTimer=null;
 function scheduleSync(){clearTimeout(_syncTimer);_syncTimer=setTimeout(pushSync,1500);}
 function snapshot(){return JSON.stringify({tx:S.tx,people:S.people,accounts:S.accounts,v:3});}
 function pushSync(){if(!S.syncUrl||!S.syncToken)return;S.syncing=true;fetch(S.syncUrl+"?action=push&token="+encodeURIComponent(S.syncToken),{method:"POST",headers:{"Content-Type":"text/plain"},body:snapshot()}).then(function(r){return r.json();}).then(function(){S.syncing=false;render();}).catch(function(){S.syncing=false;render();});}
-function pullSync(){if(!S.syncUrl||!S.syncToken){toast(tr("اول آدرس و توکن را وارد کن","Enter the URL and token first"));return;}S.syncing=true;render();fetch(S.syncUrl+"?action=pull&token="+encodeURIComponent(S.syncToken)).then(function(r){return r.json();}).then(function(j){S.syncing=false;if(j&&j.ok&&j.state){try{var d=JSON.parse(j.state);S.tx=Array.isArray(d.tx)?d.tx:[];S.people=Array.isArray(d.people)?d.people:[];S.accounts=Array.isArray(d.accounts)?d.accounts:[];S._legacyCur=d.currency;S._legacyOpen=d.openBal;migrate();localStorage.setItem("ha_data",snapshot());toast(tr("از گوگل‌شیت خوانده شد ✓","Pulled from Google Sheets ✓"));}catch(e){toast(tr("داده‌ی سرور خراب بود","Server data was corrupt"));}}else if(j&&j.error==="unauthorized"){toast(tr("توکن اشتباه است","Wrong token"));}else{toast(tr("چیزی روی سرور نبود","Nothing on the server"));}render();}).catch(function(){S.syncing=false;toast(tr("اتصال ناموفق","Connection failed"));render();});}
-function testSync(){if(!S.syncUrl||!S.syncToken){toast(tr("آدرس و توکن را کامل کن","Fill in URL and token"));return;}localStorage.setItem("ha_url",S.syncUrl);localStorage.setItem("ha_token",S.syncToken);S.syncing=true;render();fetch(S.syncUrl+"?action=pull&token="+encodeURIComponent(S.syncToken)).then(function(r){return r.json();}).then(function(j){S.syncing=false;if(j&&j.ok){toast(tr("اتصال برقرار شد ✓ حالا «خواندن» یا «ذخیره» بزن","Connected ✓ now tap Pull or Push"));}else if(j&&j.error==="unauthorized"){toast(tr("توکن اشتباه است","Wrong token"));}else{toast(tr("پاسخ نامعتبر","Invalid response"));}render();}).catch(function(){S.syncing=false;toast(tr("اتصال ناموفق — آدرس را چک کن","Connection failed — check the URL"));render();});}
+function pullSync(){syncReadInputs();if(!S.syncUrl||!S.syncToken){toast(tr("اول آدرس و توکن را وارد کن","Enter the URL and token first"));return;}S.syncing=true;render();fetch(S.syncUrl+"?action=pull&token="+encodeURIComponent(S.syncToken)).then(function(r){return r.json();}).then(function(j){S.syncing=false;if(j&&j.ok&&j.state){applyServerState(j.state);}else if(j&&j.error==="unauthorized"){toast(tr("توکن اشتباه است","Wrong token"));}else{toast(tr("چیزی روی سرور نبود","Nothing on the server"));}render();}).catch(function(){S.syncing=false;toast(tr("اتصال ناموفق","Connection failed"));render();});}
+/* پاک‌سازی: حذف فاصله و کاراکترهای نامرئی (نیم‌فاصله، ZWSP و…) که کیبورد گوشی می‌چسباند */
+function cleanCred(v){return String(v||"").replace(/[\s\u200B-\u200F\u2060\uFEFF\u00A0]/g,"");}
+function syncReadInputs(){
+  var su=document.getElementById("sy-url");if(su)S.syncUrl=cleanCred(su.value);
+  var st=document.getElementById("sy-token");if(st)S.syncToken=cleanCred(st.value);
+  if(S.syncUrl)localStorage.setItem("ha_url",S.syncUrl);
+  if(S.syncToken)localStorage.setItem("ha_token",S.syncToken);
+}
+function applyServerState(state){
+  try{var d=JSON.parse(state);S.tx=Array.isArray(d.tx)?d.tx:[];S.people=Array.isArray(d.people)?d.people:[];S.accounts=Array.isArray(d.accounts)?d.accounts:[];S._legacyCur=d.currency;S._legacyOpen=d.openBal;migrate();localStorage.setItem("ha_data",snapshot());localStorage.setItem("ha_setup","1");toast(tr("از گوگل‌شیت خوانده شد ✓","Pulled from Google Sheets ✓"));}
+  catch(e){toast(tr("داده‌ی سرور خراب بود","Server data was corrupt"));}
+}
+function testSync(){syncReadInputs();if(!S.syncUrl||!S.syncToken){toast(tr("آدرس و توکن را کامل کن","Fill in URL and token"));return;}S.syncing=true;render();fetch(S.syncUrl+"?action=pull&token="+encodeURIComponent(S.syncToken)).then(function(r){return r.json();}).then(function(j){S.syncing=false;if(j&&j.ok){
+    if(j.state&&S.tx.length===0){
+      if(confirm(tr("اتصال برقرار شد ✓ روی گوگل‌شیت داده هست ولی اپ خالی است.\nهمین حالا داده‌ها برگردانده شوند؟","Connected ✓ There is data on Google Sheets but the app is empty.\nRestore it now?"))){applyServerState(j.state);}
+      else{toast(tr("اتصال برقرار شد ✓","Connected ✓"));}
+    }else{toast(tr("اتصال برقرار شد ✓ حالا «خواندن» یا «ذخیره» بزن","Connected ✓ now tap Pull or Push"));}
+  }else if(j&&j.error==="unauthorized"){toast(tr("توکن اشتباه است — توکن باید دقیقاً همان رمزِ داخل Apps Script باشد","Wrong token — it must exactly match the one in Apps Script"));}else{toast(tr("پاسخ نامعتبر — آدرس باید به /exec ختم شود","Invalid response — URL must end with /exec"));}render();}).catch(function(){S.syncing=false;toast(tr("اتصال ناموفق — آدرس را چک کن","Connection failed — check the URL"));render();});}
 function exportJSON(){var data=snapshot();if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(data).then(function(){toast(tr("پشتیبان در کلیپ‌بورد کپی شد ✓","Backup copied to clipboard ✓"));}).catch(fallbackDL);}else fallbackDL();function fallbackDL(){try{var blob=new Blob([data],{type:"application/json"});var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="mymoney-backup-"+td()+".json";a.click();toast(tr("فایل پشتیبان دانلود شد ✓","Backup file downloaded ✓"));}catch(e){toast(tr("کپی ناموفق","Copy failed"));}}}
 function importJSON(){var raw=prompt(tr("متن پشتیبان (JSON) را اینجا بچسبان:","Paste your backup text (JSON) here:"));if(!raw)return;try{var d=JSON.parse(raw);if(!d||!Array.isArray(d.tx))throw new Error("bad");S.tx=d.tx;S.people=Array.isArray(d.people)?d.people:[];S.accounts=Array.isArray(d.accounts)?d.accounts:[];S._legacyCur=d.currency;S._legacyOpen=d.openBal;migrate();persist();render();toast(tr("بازیابی شد ✓","Restored ✓"));}catch(e){toast(tr("متن پشتیبان معتبر نیست","Invalid backup text"));}}
 
@@ -743,7 +760,7 @@ function viewSettings(){
   h+='<div class="set-card"><div class="set-row"><div><div class="set-lb">'+tr("پشتیبان‌گیری","Backup")+'</div><div class="set-d">'+tr("یک نسخه از کل داده‌ها بگیر یا بازیابی کن","Export a full copy or restore")+'</div></div></div><div class="set-row" style="gap:8px"><button class="set-btn" data-act="export" style="flex:1">'+tr("📤 گرفتن پشتیبان","📤 Export")+'</button><button class="set-btn" data-act="import" style="flex:1">'+tr("📥 بازیابی","📥 Restore")+'</button></div></div>';
   h+='<div class="set-card"><div class="set-row"><div><div class="set-lb">'+tr("☁️ سینک با گوگل‌شیت","☁️ Google Sheets sync")+' <span style="font-size:10px;color:'+(synced?'var(--in)':'var(--ink-3)')+'">'+(synced?tr("· متصل","· connected"):tr("· خاموش","· off"))+'</span></div><div class="set-d">'+tr("اختیاری — داده‌ها بین دستگاه‌ها همگام شود","Optional — sync data across devices")+'</div></div></div><div class="set-row" style="display:block"><input class="fld" id="sy-url" placeholder="'+tr("آدرس Apps Script","Apps Script URL")+'" value="'+esc(S.syncUrl)+'" style="margin-bottom:8px;direction:ltr;text-align:left"><input class="fld" id="sy-token" placeholder="'+tr("توکن مخفی","Secret token")+'" value="'+esc(S.syncToken)+'" style="direction:ltr;text-align:left"><div style="display:flex;gap:8px;margin-top:9px"><button class="set-btn" data-act="sync-test" style="flex:1">'+tr("اتصال","Connect")+'</button><button class="set-btn" data-act="sync-pull" style="flex:1">'+tr("⬇ خواندن","⬇ Pull")+'</button><button class="set-btn" data-act="sync-push" style="flex:1">'+tr("⬆ ذخیره","⬆ Push")+'</button></div><button class="set-btn" data-act="show-script" style="width:100%;margin-top:8px">'+tr("📄 دیدن کد Apps Script","📄 View Apps Script code")+'</button></div></div>';
   h+='<div class="danger-card" data-act="reset"><span class="dl">'+tr("🗑 پاک‌کردن همه‌چیز","🗑 Erase everything")+'</span><span style="color:var(--out);font-size:18px">'+tr("›","‹")+'</span></div>';
-  h+='<div class="app-ver">'+tr("حساب من","My Money")+' · v3.1 · '+tr("ساخته‌شده با ❤️","Made with ❤️")+'</div>';
+  h+='<div class="app-ver">'+tr("حساب من","My Money")+' · v3.2 · '+tr("ساخته‌شده با ❤️","Made with ❤️")+'</div>';
   return h;
 }
 function viewNav(){var items=[["home","🏠",tr("خانه","Home")],["people","🤝",tr("افراد","People")],["__add__","",""],["report","📊",tr("گزارش","Report")],["settings","⚙️",tr("تنظیمات","Settings")]];var h='<div class="nav">';items.forEach(function(it){if(it[0]==="__add__"){h+='<button class="nav-add" data-act="quickadd">＋</button>';}else{var on=(S.page===it[0])||(it[0]==="home"&&(S.page==="account"||S.page==="history"));h+='<button class="nav-btn'+(on?' on':'')+'" data-act="goto" data-page="'+it[0]+'"><span class="ni">'+it[1]+'</span>'+it[2]+'</button>';}});h+='</div>';return h;}
@@ -902,8 +919,8 @@ function captureModalInputs(){
 function closeModal(){S.modal=null;S.modalData={};S.form={};S.formErr="";render();}
 
 function bindGlobal(){
-  var su=document.getElementById("sy-url");if(su)su.onchange=function(){S.syncUrl=su.value.trim();};
-  var st=document.getElementById("sy-token");if(st)st.onchange=function(){S.syncToken=st.value.trim();};
+  var su=document.getElementById("sy-url");if(su)su.onchange=function(){S.syncUrl=cleanCred(su.value);};
+  var st=document.getElementById("sy-token");if(st)st.onchange=function(){S.syncToken=cleanCred(st.value);};
   var hs=document.getElementById("hsearch");
   if(hs){hs.oninput=function(){S.search=hs.value;var pos=hs.selectionStart;render();var hs2=document.getElementById("hsearch");if(hs2){hs2.focus();try{hs2.setSelectionRange(pos,pos);}catch(e){}}};}
   document.querySelectorAll("[data-act]").forEach(function(el){
@@ -968,7 +985,7 @@ function bindGlobal(){
         case "import":importJSON();break;
         case "sync-test":testSync();break;
         case "sync-pull":pullSync();break;
-        case "sync-push":S.syncUrl&&S.syncToken?(localStorage.setItem("ha_url",S.syncUrl),localStorage.setItem("ha_token",S.syncToken),pushSync(),toast(tr("در حال ذخیره روی گوگل‌شیت…","Saving to Google Sheets…"))):toast(tr("اول آدرس و توکن را وارد کن","Enter the URL and token first"));break;
+        case "sync-push":syncReadInputs();if(S.syncUrl&&S.syncToken){pushSync();toast(tr("در حال ذخیره روی گوگل‌شیت…","Saving to Google Sheets…"));}else{toast(tr("اول آدرس و توکن را وارد کن","Enter the URL and token first"));}break;
         case "show-script":S.modal="script";render();break;
         case "copy-script":copyScriptText();break;
         case "reset":doReset();break;
