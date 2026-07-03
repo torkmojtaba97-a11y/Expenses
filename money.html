@@ -480,10 +480,19 @@ function importJSON(){var raw=prompt(tr("متن پشتیبان (JSON) را ای�
 function applyTheme(){document.documentElement.setAttribute("data-theme",S.dark?"dark":"light");var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",S.dark?"#11141b":"#f4f1ea");}
 function toggleTheme(){S.dark=!S.dark;localStorage.setItem("ha_theme",S.dark?"dark":"light");applyTheme();render();}
 function applyLang(){document.documentElement.setAttribute("lang",S.lang);document.documentElement.setAttribute("dir",S.lang==="en"?"ltr":"rtl");}
-function setLang(l){S.lang=l;localStorage.setItem("ha_lang",l);applyLang();render();toast(S.lang==="en"?"Language: English":"زبان: فارسی");}
+function setLang(l){S.lang=l;try{localStorage.setItem("ha_lang",l);}catch(e){}applyLang();render();setTimeout(render,0);toast(S.lang==="en"?"Language: English":"زبان: فارسی");}
 function toggleLang(){setLang(S.lang==="en"?"fa":"en");}
 
-function render(){var app=document.getElementById("app");if(!localStorage.getItem("ha_setup")){app.innerHTML=viewSetup();bindSetup();return;}var html="";if(S.page==="home")html=viewHome();else if(S.page==="account"&&S.acctId)html=viewAccountDetail();else if(S.page==="people")html=S.personId?viewPersonDetail():viewPeople();else if(S.page==="report")html=viewReport();else if(S.page==="history")html=viewHistory();else if(S.page==="settings")html=viewSettings();else html=viewHome();html+=viewNav();if(S.modal)html+=viewModal();app.innerHTML=html;bindGlobal();}
+function render(){
+  try{
+    var app=document.getElementById("app");if(!app)return;
+    if(!localStorage.getItem("ha_setup")){app.innerHTML=viewSetup();bindSetup();return;}
+    var html="";if(S.page==="home")html=viewHome();else if(S.page==="account"&&S.acctId)html=viewAccountDetail();else if(S.page==="people")html=S.personId?viewPersonDetail():viewPeople();else if(S.page==="report")html=viewReport();else if(S.page==="history")html=viewHistory();else if(S.page==="settings")html=viewSettings();else html=viewHome();
+    html+=viewNav();if(S.modal)html+=viewModal();app.innerHTML=html;bindGlobal();
+  }catch(err){
+    try{var t=document.getElementById("toast");if(t){t.textContent="⚠ render: "+(err&&err.message?err.message:err);t.style.background="var(--out)";t.style.color="#fff";t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove("show");t.style.background="";t.style.color="";},7000);}}catch(x){}
+  }
+}
 
 /* ═══ صفحه‌ها ═══ */
 function viewSetup(){
@@ -520,7 +529,7 @@ function bindSetup(){
 
 function viewHome(){
   var L=buildLedger();var pNet=curNet("₱");var incP=totalIncomeCur("₱"),spP=totalSpentCur("₱");
-  var h='<div class="top"><div><div class="top-title">'+tr("سلام 👋","Hi 👋")+'</div><div class="top-sub">'+fullDate(td())+' · v3.3</div></div>'+
+  var h='<div class="top"><div><div class="top-title">'+tr("سلام 👋","Hi 👋")+'</div><div class="top-sub">'+fullDate(td())+' · v3.4</div></div>'+
     '<div class="top-acts">'+(S.syncing?'<div class="icon-btn" style="position:relative"><span class="sync-dot"></span>☁️</div>':'')+'<button class="icon-btn" data-act="lang">'+(S.lang==="en"?'فا':'EN')+'</button><button class="icon-btn" data-act="theme">'+(S.dark?'☀️':'🌙')+'</button></div></div>';
   h+='<div class="hero"><div class="hero-lb">'+tr("دارایی پزو","Peso balance")+'</div><div class="hero-amt num'+(pNet<0?' neg':'')+'">'+money(pNet,"₱")+'</div>'+
     '<div class="hero-grid"><div class="hero-cell"><div class="hc-lb">'+tr("⬆ درآمد","⬆ Income")+'</div><div class="hc-val num" style="color:var(--in)">'+money(incP,"₱")+'</div></div>'+
@@ -760,7 +769,7 @@ function viewSettings(){
   h+='<div class="set-card"><div class="set-row"><div><div class="set-lb">'+tr("پشتیبان‌گیری","Backup")+'</div><div class="set-d">'+tr("یک نسخه از کل داده‌ها بگیر یا بازیابی کن","Export a full copy or restore")+'</div></div></div><div class="set-row" style="gap:8px"><button class="set-btn" data-act="export" style="flex:1">'+tr("📤 گرفتن پشتیبان","📤 Export")+'</button><button class="set-btn" data-act="import" style="flex:1">'+tr("📥 بازیابی","📥 Restore")+'</button></div></div>';
   h+='<div class="set-card"><div class="set-row"><div><div class="set-lb">'+tr("☁️ سینک با گوگل‌شیت","☁️ Google Sheets sync")+' <span style="font-size:10px;color:'+(synced?'var(--in)':'var(--ink-3)')+'">'+(synced?tr("· متصل","· connected"):tr("· خاموش","· off"))+'</span></div><div class="set-d">'+tr("اختیاری — داده‌ها بین دستگاه‌ها همگام شود","Optional — sync data across devices")+'</div></div></div><div class="set-row" style="display:block"><input class="fld" id="sy-url" placeholder="'+tr("آدرس Apps Script","Apps Script URL")+'" value="'+esc(S.syncUrl)+'" style="margin-bottom:8px;direction:ltr;text-align:left"><input class="fld" id="sy-token" placeholder="'+tr("توکن مخفی","Secret token")+'" value="'+esc(S.syncToken)+'" style="direction:ltr;text-align:left"><div style="display:flex;gap:8px;margin-top:9px"><button class="set-btn" data-act="sync-test" style="flex:1">'+tr("اتصال","Connect")+'</button><button class="set-btn" data-act="sync-pull" style="flex:1">'+tr("⬇ خواندن","⬇ Pull")+'</button><button class="set-btn" data-act="sync-push" style="flex:1">'+tr("⬆ ذخیره","⬆ Push")+'</button></div><button class="set-btn" data-act="show-script" style="width:100%;margin-top:8px">'+tr("📄 دیدن کد Apps Script","📄 View Apps Script code")+'</button></div></div>';
   h+='<div class="danger-card" data-act="reset"><span class="dl">'+tr("🗑 پاک‌کردن همه‌چیز","🗑 Erase everything")+'</span><span style="color:var(--out);font-size:18px">'+tr("›","‹")+'</span></div>';
-  h+='<div class="app-ver">'+tr("حساب من","My Money")+' · v3.3 · '+tr("ساخته‌شده با ❤️","Made with ❤️")+'</div>';
+  h+='<div class="app-ver">'+tr("حساب من","My Money")+' · v3.4 · '+tr("ساخته‌شده با ❤️","Made with ❤️")+'</div>';
   return h;
 }
 function viewNav(){var items=[["home","🏠",tr("خانه","Home")],["people","🤝",tr("افراد","People")],["__add__","",""],["report","📊",tr("گزارش","Report")],["settings","⚙️",tr("تنظیمات","Settings")]];var h='<div class="nav">';items.forEach(function(it){if(it[0]==="__add__"){h+='<button class="nav-add" data-act="quickadd">＋</button>';}else{var on=(S.page===it[0])||(it[0]==="home"&&(S.page==="account"||S.page==="history"));h+='<button class="nav-btn'+(on?' on':'')+'" data-act="goto" data-page="'+it[0]+'"><span class="ni">'+it[1]+'</span>'+it[2]+'</button>';}});h+='</div>';return h;}
