@@ -520,7 +520,7 @@ function bindSetup(){
 
 function viewHome(){
   var L=buildLedger();var pNet=curNet("₱");var incP=totalIncomeCur("₱"),spP=totalSpentCur("₱");
-  var h='<div class="top"><div><div class="top-title">'+tr("سلام 👋","Hi 👋")+'</div><div class="top-sub">'+fullDate(td())+'</div></div>'+
+  var h='<div class="top"><div><div class="top-title">'+tr("سلام 👋","Hi 👋")+'</div><div class="top-sub">'+fullDate(td())+' · v3.3</div></div>'+
     '<div class="top-acts">'+(S.syncing?'<div class="icon-btn" style="position:relative"><span class="sync-dot"></span>☁️</div>':'')+'<button class="icon-btn" data-act="lang">'+(S.lang==="en"?'فا':'EN')+'</button><button class="icon-btn" data-act="theme">'+(S.dark?'☀️':'🌙')+'</button></div></div>';
   h+='<div class="hero"><div class="hero-lb">'+tr("دارایی پزو","Peso balance")+'</div><div class="hero-amt num'+(pNet<0?' neg':'')+'">'+money(pNet,"₱")+'</div>'+
     '<div class="hero-grid"><div class="hero-cell"><div class="hc-lb">'+tr("⬆ درآمد","⬆ Income")+'</div><div class="hc-val num" style="color:var(--in)">'+money(incP,"₱")+'</div></div>'+
@@ -760,7 +760,7 @@ function viewSettings(){
   h+='<div class="set-card"><div class="set-row"><div><div class="set-lb">'+tr("پشتیبان‌گیری","Backup")+'</div><div class="set-d">'+tr("یک نسخه از کل داده‌ها بگیر یا بازیابی کن","Export a full copy or restore")+'</div></div></div><div class="set-row" style="gap:8px"><button class="set-btn" data-act="export" style="flex:1">'+tr("📤 گرفتن پشتیبان","📤 Export")+'</button><button class="set-btn" data-act="import" style="flex:1">'+tr("📥 بازیابی","📥 Restore")+'</button></div></div>';
   h+='<div class="set-card"><div class="set-row"><div><div class="set-lb">'+tr("☁️ سینک با گوگل‌شیت","☁️ Google Sheets sync")+' <span style="font-size:10px;color:'+(synced?'var(--in)':'var(--ink-3)')+'">'+(synced?tr("· متصل","· connected"):tr("· خاموش","· off"))+'</span></div><div class="set-d">'+tr("اختیاری — داده‌ها بین دستگاه‌ها همگام شود","Optional — sync data across devices")+'</div></div></div><div class="set-row" style="display:block"><input class="fld" id="sy-url" placeholder="'+tr("آدرس Apps Script","Apps Script URL")+'" value="'+esc(S.syncUrl)+'" style="margin-bottom:8px;direction:ltr;text-align:left"><input class="fld" id="sy-token" placeholder="'+tr("توکن مخفی","Secret token")+'" value="'+esc(S.syncToken)+'" style="direction:ltr;text-align:left"><div style="display:flex;gap:8px;margin-top:9px"><button class="set-btn" data-act="sync-test" style="flex:1">'+tr("اتصال","Connect")+'</button><button class="set-btn" data-act="sync-pull" style="flex:1">'+tr("⬇ خواندن","⬇ Pull")+'</button><button class="set-btn" data-act="sync-push" style="flex:1">'+tr("⬆ ذخیره","⬆ Push")+'</button></div><button class="set-btn" data-act="show-script" style="width:100%;margin-top:8px">'+tr("📄 دیدن کد Apps Script","📄 View Apps Script code")+'</button></div></div>';
   h+='<div class="danger-card" data-act="reset"><span class="dl">'+tr("🗑 پاک‌کردن همه‌چیز","🗑 Erase everything")+'</span><span style="color:var(--out);font-size:18px">'+tr("›","‹")+'</span></div>';
-  h+='<div class="app-ver">'+tr("حساب من","My Money")+' · v3.2 · '+tr("ساخته‌شده با ❤️","Made with ❤️")+'</div>';
+  h+='<div class="app-ver">'+tr("حساب من","My Money")+' · v3.3 · '+tr("ساخته‌شده با ❤️","Made with ❤️")+'</div>';
   return h;
 }
 function viewNav(){var items=[["home","🏠",tr("خانه","Home")],["people","🤝",tr("افراد","People")],["__add__","",""],["report","📊",tr("گزارش","Report")],["settings","⚙️",tr("تنظیمات","Settings")]];var h='<div class="nav">';items.forEach(function(it){if(it[0]==="__add__"){h+='<button class="nav-add" data-act="quickadd">＋</button>';}else{var on=(S.page===it[0])||(it[0]==="home"&&(S.page==="account"||S.page==="history"));h+='<button class="nav-btn'+(on?' on':'')+'" data-act="goto" data-page="'+it[0]+'"><span class="ni">'+it[1]+'</span>'+it[2]+'</button>';}});h+='</div>';return h;}
@@ -923,17 +923,31 @@ function bindGlobal(){
   var st=document.getElementById("sy-token");if(st)st.onchange=function(){S.syncToken=cleanCred(st.value);};
   var hs=document.getElementById("hsearch");
   if(hs){hs.oninput=function(){S.search=hs.value;var pos=hs.selectionStart;render();var hs2=document.getElementById("hsearch");if(hs2){hs2.focus();try{hs2.setSelectionRange(pos,pos);}catch(e){}}};}
-  document.querySelectorAll("[data-act]").forEach(function(el){
+  document.querySelectorAll("select[data-act]").forEach(function(el){
     var act=el.getAttribute("data-act");
-    if(act==="overlay"){el.onclick=function(ev){if(ev.target===el)closeModal();};return;}
-    if(act==="month"){el.onchange=function(){S.vm=el.value;render();};return;}
-    if(act==="pickperson"){el.onchange=function(){captureModalInputs();S.form.personId=el.value;render();};return;}
-    if(act==="pickacct"){el.onchange=function(){captureModalInputs();S.form.accountId=el.value;render();};return;}
-    if(act==="pickfrom"){el.onchange=function(){captureModalInputs();S.form.fromId=el.value;render();};return;}
-    if(act==="pickto"){el.onchange=function(){captureModalInputs();S.form.toId=el.value;render();};return;}
-    el.onclick=function(ev){
-      ev.stopPropagation();var id=el.getAttribute("data-id");
-      switch(act){
+    if(act==="month"){el.onchange=function(){S.vm=el.value;render();};}
+    else if(act==="pickperson"){el.onchange=function(){captureModalInputs();S.form.personId=el.value;render();};}
+    else if(act==="pickacct"){el.onchange=function(){captureModalInputs();S.form.accountId=el.value;render();};}
+    else if(act==="pickfrom"){el.onchange=function(){captureModalInputs();S.form.fromId=el.value;render();};}
+    else if(act==="pickto"){el.onchange=function(){captureModalInputs();S.form.toId=el.value;render();};}
+  });
+}
+/* ── شنونده‌ی سراسری و دائمی کلیک (delegation) — ضدِّ باگ لمس موبایل: هیچ‌وقت با رندر از بین نمی‌رود ── */
+var _delegated=false;
+function installDelegation(){
+  if(_delegated)return;_delegated=true;
+  document.addEventListener("click",function(ev){
+    var el=ev.target&&ev.target.closest?ev.target.closest("[data-act]"):null;
+    if(!el)return;
+    var act=el.getAttribute("data-act");
+    if(el.tagName==="SELECT")return; /* selectها با onchange کار می‌کنند */
+    if(act==="overlay"){if(ev.target===el)closeModal();return;}
+    handleAction(act,el,ev);
+  },false);
+}
+function handleAction(act,el,ev){
+  var id=el.getAttribute("data-id");
+  switch(act){
         case "theme":toggleTheme();break;
         case "lang":toggleLang();break;
         case "lang-fa":setLang("fa");break;
@@ -989,9 +1003,7 @@ function bindGlobal(){
         case "show-script":S.modal="script";render();break;
         case "copy-script":copyScriptText();break;
         case "reset":doReset();break;
-      }
-    };
-  });
+  }
 }
 
 /* ذخیره‌ها */
@@ -1101,6 +1113,14 @@ function copyScriptText(){var txt=SCRIPT;if(navigator.clipboard&&window.isSecure
 function legacyCopy(txt){try{var ta=document.createElement("textarea");ta.value=txt;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.focus();ta.select();document.execCommand("copy");document.body.removeChild(ta);toast(tr("کد کپی شد ✓","Code copied ✓"));}catch(e){toast(tr("کپی ناموفق — دستی انتخاب کن","Copy failed — select manually"));}}
 
 /* INIT */
+window.addEventListener("error",function(e){
+  try{var el=document.getElementById("toast");if(!el)return;
+    el.textContent="⚠ "+(e.message||"JS error")+(e.lineno?(" @"+e.lineno):"");
+    el.style.background="var(--out)";el.style.color="#fff";el.classList.add("show");
+    clearTimeout(el._t);el._t=setTimeout(function(){el.classList.remove("show");el.style.background="";el.style.color="";},6000);
+  }catch(x){}
+});
+installDelegation();
 restore();
 migrate();
 applyTheme();
