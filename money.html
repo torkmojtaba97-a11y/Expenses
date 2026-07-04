@@ -332,7 +332,7 @@ function typeLbl(t){return S.lang==="en"?(t.le||t.l):t.l;}
 function curLabel(cur){return cur==="$"?tr("دلار","Dollar"):tr("پزو","Peso");}
 
 /* ذخیره / بازیابی / مهاجرت */
-function persist(){try{localStorage.setItem("ha_data",JSON.stringify({tx:S.tx,people:S.people,accounts:S.accounts,v:3}));}catch(e){}if(S.syncUrl&&S.syncToken&&S.tx.length>0)scheduleSync();}
+function persist(){try{localStorage.setItem("ha_data",JSON.stringify({tx:S.tx,people:S.people,accounts:S.accounts,v:3}));}catch(e){}saveLocalBackup();if(S.syncUrl&&S.syncToken&&S.tx.length>0)scheduleSync();}
 function restore(){try{var raw=localStorage.getItem("ha_data");if(raw){var d=JSON.parse(raw);S.tx=Array.isArray(d.tx)?d.tx:[];S.people=Array.isArray(d.people)?d.people:[];S.accounts=Array.isArray(d.accounts)?d.accounts:[];S._legacyCur=d.currency;S._legacyOpen=d.openBal;}}catch(e){}S.dark=localStorage.getItem("ha_theme")==="dark";}
 function migrate(){
   if(!Array.isArray(S.accounts))S.accounts=[];
@@ -457,7 +457,44 @@ var SCRIPT=[
 var _syncTimer=null;
 function scheduleSync(){clearTimeout(_syncTimer);_syncTimer=setTimeout(pushSync,1500);}
 function snapshot(){return JSON.stringify({tx:S.tx,people:S.people,accounts:S.accounts,v:3});}
-function pushSync(){if(!S.syncUrl||!S.syncToken)return;S.syncing=true;fetch(S.syncUrl+"?action=push&token="+encodeURIComponent(S.syncToken),{method:"POST",headers:{"Content-Type":"text/plain"},body:snapshot()}).then(function(r){return r.json();}).then(function(){S.syncing=false;render();}).catch(function(){S.syncing=false;render();});}
+/* ── محافظ‌ها ── */
+function stateIsEmpty(o){try{if(typeof o==="string")o=JSON.parse(o);}catch(e){return true;}if(!o)return true;var tx=Array.isArray(o.tx)?o.tx:[];var pe=Array.isArray(o.people)?o.people:[];return tx.length===0&&pe.length===0;}
+function localIsEmpty(){return S.tx.length===0&&S.people.length===0;}
+/* پشتیبان محلی چرخشی: هر روز حداکثر یک نسخه، آخرین ۵ روز نگه داشته می‌شود */
+function saveLocalBackup(){
+  if(localIsEmpty())return;
+  try{
+    var today=td();
+    var idx=[];try{idx=JSON.parse(localStorage.getItem("ha_bk_index")||"[]");}catch(e){idx=[];}
+    if(idx.length&&idx[idx.length-1].d===today){localStorage.setItem("ha_bk_"+today,snapshot());return;}
+    localStorage.setItem("ha_bk_"+today,snapshot());
+    idx.push({d:today,tx:S.tx.length,people:S.people.length});
+    while(idx.length>5){var old=idx.shift();try{localStorage.removeItem("ha_bk_"+old.d);}catch(e){}}
+    localStorage.setItem("ha_bk_index",JSON.stringify(idx));
+  }catch(e){}
+}
+function latestBackup(){try{var idx=JSON.parse(localStorage.getItem("ha_bk_index")||"[]");for(var i=idx.length-1;i>=0;i--){var raw=localStorage.getItem("ha_bk_"+idx[i].d);if(raw&&!stateIsEmpty(raw))return {d:idx[i].d,raw:raw,meta:idx[i]};}}catch(e){}return null;}
+function restoreLocalBackup(){
+  var b=latestBackup();
+  if(!b){toast(tr("پشتیبان محلی‌ای پیدا نشد","No local backup found"));return;}
+  if(!confirm(tr("بازگردانی از پشتیبانِ ","Restore from backup of ")+b.d+" ("+b.meta.tx+" tx"+(b.meta.people?", "+b.meta.people+" people":"")+tr(")؟ داده‌ی فعلی جایگزین می‌شود.",")? Current data will be replaced.")))return;
+  try{var d=JSON.parse(b.raw);S.tx=Array.isArray(d.tx)?d.tx:[];S.people=Array.isArray(d.people)?d.people:[];S.accounts=Array.isArray(d.accounts)?d.accounts:[];migrate();persist();render();toast(tr("از پشتیبان بازگردانده شد ✓","Restored from backup ✓"));}
+  catch(e){toast(tr("پشتیبان خراب بود","Backup was corrupt"));}
+}
+function pushSync(force){
+  if(!S.syncUrl||!S.syncToken)return;
+  /* محافظ ضدِّ بازنویسی: اگر اپ خالی است، اول سرور را چک کن */
+  if(localIsEmpty()&&!force){
+    fetch(S.syncUrl+"?action=pull&token="+encodeURIComponent(S.syncToken)).then(function(r){return r.json();}).then(function(j){
+      if(j&&j.ok&&j.state&&!stateIsEmpty(j.state)){
+        toast(tr("⛔ Push متوقف شد: اپ خالی است ولی سرور داده دارد. برای جلوگیری از پاک‌شدن، اول Pull بزن.","⛔ Push blocked: app is empty but server has data. Pull first to avoid wiping it."));
+      }else{ doPush(); }
+    }).catch(function(){});
+    return;
+  }
+  doPush();
+}
+function doPush(){S.syncing=true;fetch(S.syncUrl+"?action=push&token="+encodeURIComponent(S.syncToken),{method:"POST",headers:{"Content-Type":"text/plain"},body:snapshot()}).then(function(r){return r.json();}).then(function(){S.syncing=false;render();}).catch(function(){S.syncing=false;render();});}
 function pullSync(){syncReadInputs();if(!S.syncUrl||!S.syncToken){toast(tr("اول آدرس و توکن را وارد کن","Enter the URL and token first"));return;}S.syncing=true;render();fetch(S.syncUrl+"?action=pull&token="+encodeURIComponent(S.syncToken)).then(function(r){return r.json();}).then(function(j){S.syncing=false;if(j&&j.ok&&j.state){applyServerState(j.state);}else if(j&&j.error==="unauthorized"){toast(tr("توکن اشتباه است","Wrong token"));}else{toast(tr("چیزی روی سرور نبود","Nothing on the server"));}render();}).catch(function(){S.syncing=false;toast(tr("اتصال ناموفق","Connection failed"));render();});}
 /* پاک‌سازی: حذف فاصله و کاراکترهای نامرئی (نیم‌فاصله، ZWSP و…) که کیبورد گوشی می‌چسباند */
 function cleanCred(v){return String(v||"").replace(/[\s\u200B-\u200F\u2060\uFEFF\u00A0]/g,"");}
@@ -477,7 +514,7 @@ function testSync(){syncReadInputs();if(!S.syncUrl||!S.syncToken){toast(tr("آد
       else{toast(tr("اتصال برقرار شد ✓","Connected ✓"));}
     }else{toast(tr("اتصال برقرار شد ✓ حالا «خواندن» یا «ذخیره» بزن","Connected ✓ now tap Pull or Push"));}
   }else if(j&&j.error==="unauthorized"){toast(tr("توکن اشتباه است — توکن باید دقیقاً همان رمزِ داخل Apps Script باشد","Wrong token — it must exactly match the one in Apps Script"));}else{toast(tr("پاسخ نامعتبر — آدرس باید به /exec ختم شود","Invalid response — URL must end with /exec"));}render();}).catch(function(){S.syncing=false;toast(tr("اتصال ناموفق — آدرس را چک کن","Connection failed — check the URL"));render();});}
-function exportJSON(){var data=snapshot();if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(data).then(function(){toast(tr("پشتیبان در کلیپ‌بورد کپی شد ✓","Backup copied to clipboard ✓"));}).catch(fallbackDL);}else fallbackDL();function fallbackDL(){try{var blob=new Blob([data],{type:"application/json"});var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="mymoney-backup-"+td()+".json";a.click();toast(tr("فایل پشتیبان دانلود شد ✓","Backup file downloaded ✓"));}catch(e){toast(tr("کپی ناموفق","Copy failed"));}}}
+function exportJSON(){try{localStorage.setItem("ha_last_export",String(Date.now()));}catch(e){}var data=snapshot();if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(data).then(function(){toast(tr("پشتیبان در کلیپ‌بورد کپی شد ✓","Backup copied to clipboard ✓"));}).catch(fallbackDL);}else fallbackDL();function fallbackDL(){try{var blob=new Blob([data],{type:"application/json"});var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="mymoney-backup-"+td()+".json";a.click();toast(tr("فایل پشتیبان دانلود شد ✓","Backup file downloaded ✓"));}catch(e){toast(tr("کپی ناموفق","Copy failed"));}}}
 function importJSON(){var raw=prompt(tr("متن پشتیبان (JSON) را اینجا بچسبان:","Paste your backup text (JSON) here:"));if(!raw)return;try{var d=JSON.parse(raw);if(!d||!Array.isArray(d.tx))throw new Error("bad");S.tx=d.tx;S.people=Array.isArray(d.people)?d.people:[];S.accounts=Array.isArray(d.accounts)?d.accounts:[];S._legacyCur=d.currency;S._legacyOpen=d.openBal;migrate();persist();render();toast(tr("بازیابی شد ✓","Restored ✓"));}catch(e){toast(tr("متن پشتیبان معتبر نیست","Invalid backup text"));}}
 
 /* تم و زبان */
@@ -533,7 +570,7 @@ function bindSetup(){
 
 function viewHome(){
   var L=buildLedger();var pNet=curNet("₱");var incP=totalIncomeCur("₱"),spP=totalSpentCur("₱");
-  var h='<div class="top"><div><div class="top-title">'+tr("سلام 👋","Hi 👋")+'</div><div class="top-sub">'+fullDate(td())+' · v3.5</div></div>'+
+  var h='<div class="top"><div><div class="top-title">'+tr("سلام 👋","Hi 👋")+'</div><div class="top-sub">'+fullDate(td())+' · v3.6</div></div>'+
     '<div class="top-acts">'+(S.syncing?'<div class="icon-btn" style="position:relative"><span class="sync-dot"></span>☁️</div>':'')+'<button class="icon-btn" data-act="lang">'+(S.lang==="en"?'فا':'EN')+'</button><button class="icon-btn" data-act="theme">'+(S.dark?'☀️':'🌙')+'</button></div></div>';
   h+='<div class="hero"><div class="hero-lb">'+tr("دارایی پزو","Peso balance")+'</div><div class="hero-amt num'+(pNet<0?' neg':'')+'">'+money(pNet,"₱")+'</div>'+
     '<div class="hero-grid"><div class="hero-cell"><div class="hc-lb">'+tr("⬆ درآمد","⬆ Income")+'</div><div class="hc-val num" style="color:var(--in)">'+money(incP,"₱")+'</div></div>'+
@@ -770,10 +807,10 @@ function viewSettings(){
   var L=buildLedger();
   S.accounts.forEach(function(a){var ty=typeOf(a.type);var bal=L.bal[a.id]||0;h+='<div class="acct-card'+(a.archived?' archived':'')+'" data-act="edit-account" data-id="'+a.id+'"><div class="acct-ic">'+ty.i+'</div><div class="acct-mid"><div class="acct-name">'+esc(accName(a))+' <span class="cur-badge">'+a.cur+'</span>'+(a.archived?' <span class="cur-badge">'+tr("بایگانی","archived")+'</span>':'')+'</div><div class="acct-type">'+typeLbl(ty)+'</div></div><div class="acct-bal num" style="color:'+(bal<0?'var(--out)':'var(--ink)')+'">'+money(bal,a.cur)+'</div></div>';});
   h+='</div>';
-  h+='<div class="set-card"><div class="set-row"><div><div class="set-lb">'+tr("پشتیبان‌گیری","Backup")+'</div><div class="set-d">'+tr("یک نسخه از کل داده‌ها بگیر یا بازیابی کن","Export a full copy or restore")+'</div></div></div><div class="set-row" style="gap:8px"><button class="set-btn" data-act="export" style="flex:1">'+tr("📤 گرفتن پشتیبان","📤 Export")+'</button><button class="set-btn" data-act="import" style="flex:1">'+tr("📥 بازیابی","📥 Restore")+'</button></div></div>';
+  h+='<div class="set-card"><div class="set-row"><div><div class="set-lb">'+tr("پشتیبان‌گیری","Backup")+'</div><div class="set-d">'+tr("یک نسخه از کل داده‌ها بگیر یا بازیابی کن","Export a full copy or restore")+'</div></div></div><div class="set-row" style="gap:8px"><button class="set-btn" data-act="export" style="flex:1">'+tr("📤 گرفتن پشتیبان","📤 Export")+'</button><button class="set-btn" data-act="import" style="flex:1">'+tr("📥 بازیابی","📥 Restore")+'</button></div>'+(latestBackup()?'<div class="set-row"><button class="set-btn" data-act="restore-backup" style="width:100%">'+tr("♻️ بازگردانی از پشتیبان خودکار (","♻️ Restore auto-backup (")+latestBackup().d+')</button></div>':'')+'</div>';
   h+='<div class="set-card"><div class="set-row"><div><div class="set-lb">'+tr("☁️ سینک با گوگل‌شیت","☁️ Google Sheets sync")+' <span style="font-size:10px;color:'+(synced?'var(--in)':'var(--ink-3)')+'">'+(synced?tr("· متصل","· connected"):tr("· خاموش","· off"))+'</span></div><div class="set-d">'+tr("اختیاری — داده‌ها بین دستگاه‌ها همگام شود","Optional — sync data across devices")+'</div></div></div><div class="set-row" style="display:block"><input class="fld" id="sy-url" placeholder="'+tr("آدرس Apps Script","Apps Script URL")+'" value="'+esc(S.syncUrl)+'" style="margin-bottom:8px;direction:ltr;text-align:left"><input class="fld" id="sy-token" placeholder="'+tr("توکن مخفی","Secret token")+'" value="'+esc(S.syncToken)+'" style="direction:ltr;text-align:left"><div style="display:flex;gap:8px;margin-top:9px"><button class="set-btn" data-act="sync-test" style="flex:1">'+tr("اتصال","Connect")+'</button><button class="set-btn" data-act="sync-pull" style="flex:1">'+tr("⬇ خواندن","⬇ Pull")+'</button><button class="set-btn" data-act="sync-push" style="flex:1">'+tr("⬆ ذخیره","⬆ Push")+'</button></div><button class="set-btn" data-act="show-script" style="width:100%;margin-top:8px">'+tr("📄 دیدن کد Apps Script","📄 View Apps Script code")+'</button></div></div>';
   h+='<div class="danger-card" data-act="reset"><span class="dl">'+tr("🗑 پاک‌کردن همه‌چیز","🗑 Erase everything")+'</span><span style="color:var(--out);font-size:18px">'+tr("›","‹")+'</span></div>';
-  h+='<div class="app-ver">'+tr("حساب من","My Money")+' · v3.5 · '+tr("ساخته‌شده با ❤️","Made with ❤️")+'</div>';
+  h+='<div class="app-ver">'+tr("حساب من","My Money")+' · v3.6 · '+tr("ساخته‌شده با ❤️","Made with ❤️")+'</div>';
   return h;
 }
 function viewNav(){var items=[["home","🏠",tr("خانه","Home")],["people","🤝",tr("افراد","People")],["__add__","",""],["report","📊",tr("گزارش","Report")],["settings","⚙️",tr("تنظیمات","Settings")]];var h='<div class="nav">';items.forEach(function(it){if(it[0]==="__add__"){h+='<button class="nav-add" data-act="quickadd">＋</button>';}else{var on=(S.page===it[0])||(it[0]==="home"&&(S.page==="account"||S.page==="history"));h+='<button class="nav-btn'+(on?' on':'')+'" data-act="goto" data-page="'+it[0]+'"><span class="ni">'+it[1]+'</span>'+it[2]+'</button>';}});h+='</div>';return h;}
@@ -1010,6 +1047,7 @@ function handleAction(act,el,ev){
         case "save-editdebttx":saveEditDebtTx();break;
         case "export":exportJSON();break;
         case "import":importJSON();break;
+        case "restore-backup":restoreLocalBackup();break;
         case "sync-test":testSync();break;
         case "sync-pull":pullSync();break;
         case "sync-push":syncReadInputs();if(S.syncUrl&&S.syncToken){pushSync();toast(tr("در حال ذخیره روی گوگل‌شیت…","Saving to Google Sheets…"));}else{toast(tr("اول آدرس و توکن را وارد کن","Enter the URL and token first"));}break;
@@ -1140,6 +1178,19 @@ applyTheme();
 applyLang();
 S.vm=curMonth();
 render();
+/* پشتیبان از وضعیت لود‌شده */
+saveLocalBackup();
+/* اگر اپ خالی است ولی پشتیبان سالمی هست، پیشنهاد بازگردانی */
+setTimeout(function(){
+  if(localIsEmpty()){
+    var b=latestBackup();
+    if(b){ if(confirm(tr("اپ خالی است ولی یک پشتیبان خودکار از ","App is empty but an auto-backup from ")+b.d+tr(" پیدا شد ("," exists (")+b.meta.tx+" tx). "+tr("بازگردانی شود؟","Restore it?"))){restoreLocalBackup();} }
+  }else{
+    /* یادآور Export هر ۵ روز */
+    try{var last=localStorage.getItem("ha_last_export");var days=last?((Date.now()-parseInt(last,10))/86400000):999;
+      if(days>5)toast(tr("💡 یادت باشد گاهی از تنظیمات «📤 گرفتن پشتیبان» بزنی","💡 Tip: occasionally tap 📤 Export in Settings"));}catch(e){}
+  }
+},600);
 if(S.syncUrl&&S.syncToken){pullSync();}
 
 </script>
