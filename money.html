@@ -268,6 +268,15 @@ select.fld{-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Cs
   color:var(--bg);border-radius:13px;padding:11px 20px;font-size:13px;font-weight:700;z-index:60;opacity:0;
   transition:.28s;white-space:nowrap;box-shadow:var(--shadow-lg);pointer-events:none;max-width:90vw;text-align:center}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.limit-card{margin:0 16px 4px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:15px 16px;box-shadow:var(--shadow)}
+.limit-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}
+.limit-lb{font-size:12px;font-weight:700;color:var(--ink-2)}
+.limit-avail{font-size:13px;font-weight:800}
+.limit-bar{height:10px;background:var(--bg-soft);border-radius:6px;overflow:hidden}
+.limit-fill{height:100%;border-radius:6px;transition:width .5s cubic-bezier(.34,1.4,.5,1)}
+.limit-sub{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-3);margin-top:6px;font-weight:600}
+.card-guide{margin:0 16px 8px;background:var(--cc-soft);border:1px solid var(--cc-soft);border-radius:var(--r);padding:12px 14px;font-size:11.5px;line-height:1.75;color:var(--ink-2)}
+.card-guide b{color:var(--cc)}
 </style>
 </head>
 <body>
@@ -570,7 +579,7 @@ function bindSetup(){
 
 function viewHome(){
   var L=buildLedger();var pNet=curNet("₱");var incP=totalIncomeCur("₱"),spP=totalSpentCur("₱");
-  var h='<div class="top"><div><div class="top-title">'+tr("سلام 👋","Hi 👋")+'</div><div class="top-sub">'+fullDate(td())+' · v3.6</div></div>'+
+  var h='<div class="top"><div><div class="top-title">'+tr("سلام 👋","Hi 👋")+'</div><div class="top-sub">'+fullDate(td())+' · v3.7</div></div>'+
     '<div class="top-acts">'+(S.syncing?'<div class="icon-btn" style="position:relative"><span class="sync-dot"></span>☁️</div>':'')+'<button class="icon-btn" data-act="lang">'+(S.lang==="en"?'فا':'EN')+'</button><button class="icon-btn" data-act="theme">'+(S.dark?'☀️':'🌙')+'</button></div></div>';
   h+='<div class="hero"><div class="hero-lb">'+tr("دارایی پزو","Peso balance")+'</div><div class="hero-amt num'+(pNet<0?' neg':'')+'">'+money(pNet,"₱")+'</div>'+
     '<div class="hero-grid"><div class="hero-cell"><div class="hc-lb">'+tr("⬆ درآمد","⬆ Income")+'</div><div class="hc-val num" style="color:var(--in)">'+money(incP,"₱")+'</div></div>'+
@@ -582,7 +591,7 @@ function viewHome(){
   if(recvD>0||payD>0)h+='<div class="hero-net tight"><span class="hero-net-lb">'+tr("🤝 طلب دلاری","🤝 Owed to me ($)")+'</span><span class="hero-net-val num" style="color:var(--in)">'+money(recvD,"$")+'</span></div><div class="hero-net tight"><span class="hero-net-lb">'+tr("💸 بدهی دلاری","💸 I owe ($)")+'</span><span class="hero-net-val num" style="color:var(--out)">'+money(payD,"$")+'</span></div>';
   h+='</div>';
   h+='<div class="sec"><span class="sec-t">'+tr("حساب‌ها","Accounts")+'</span><span class="sec-a" data-act="add-account">'+tr("＋ افزودن","＋ Add")+'</span></div><div class="feed">';
-  activeAccounts().forEach(function(a){var bal=L.bal[a.id]||0;var ty=typeOf(a.type);var neg=bal<0;h+='<div class="acct-card" data-act="open-account" data-id="'+a.id+'"><div class="acct-ic">'+ty.i+'</div><div class="acct-mid"><div class="acct-name">'+esc(accName(a))+' <span class="cur-badge">'+a.cur+'</span></div><div class="acct-type">'+typeLbl(ty)+(a.type==="card"&&neg?' · '+tr("بدهی","debt"):'')+'</div></div><div class="acct-bal num" style="color:'+(neg?'var(--out)':'var(--ink)')+'">'+money(bal,a.cur)+'</div></div>';});
+  activeAccounts().forEach(function(a){var bal=L.bal[a.id]||0;var ty=typeOf(a.type);var neg=bal<0;h+='<div class="acct-card" data-act="open-account" data-id="'+a.id+'"><div class="acct-ic">'+ty.i+'</div><div class="acct-mid"><div class="acct-name">'+esc(accName(a))+' <span class="cur-badge">'+a.cur+'</span></div><div class="acct-type">'+typeLbl(ty)+(a.type==="card"?(cardAvailable(a)!=null?' · '+money(cardAvailable(a),a.cur)+tr(" مانده"," left"):(neg?' · '+tr("بدهی","debt"):'')):'')+'</div></div><div class="acct-bal num" style="color:'+(neg?'var(--out)':'var(--ink)')+'">'+money(bal,a.cur)+'</div></div>';});
   h+='</div>';
   var recent=L.list.slice().reverse().slice(0,10);
   h+='<div class="sec"><span class="sec-t">'+tr("تراکنش‌های اخیر","Recent transactions")+'</span>'+(recent.length?'<span class="sec-a" data-act="goto" data-page="history">'+tr("همه","All")+'</span>':'')+'</div><div class="feed">';
@@ -640,13 +649,33 @@ function txDetail(t){
   html+='<button class="det-btn danger" data-act="del-tx" data-id="'+t.id+'">'+tr("🗑 حذف","🗑 Delete")+'</button></div></div>';return html;
 }
 
+function cardDebtOf(id){var b=accBalance(id);return b<0?-b:0;}
+function cardLimit(a){return a&&a.limit>0?num(a.limit):0;}
+function cardAvailable(a){var lim=cardLimit(a);if(lim<=0)return null;return lim-cardDebtOf(a.id);}
 function viewAccountDetail(){
   var a=accById(S.acctId);if(!a){S.acctId=null;S.page="home";return viewHome();}
   var L=buildLedger();var bal=L.bal[a.id]||0;var ty=typeOf(a.type);var neg=bal<0;
   var mine=L.list.filter(function(t){return txAccountEffect(t,a.id)!==null;});
   var h='<div class="top"><div style="display:flex;align-items:center;gap:10px"><button class="icon-btn" data-act="back-home">'+tr("→","←")+'</button><div class="top-title">'+esc(accName(a))+'</div></div><div class="top-acts"><button class="icon-btn" data-act="edit-account" data-id="'+a.id+'">✏️</button></div></div>';
   h+='<div class="pd-hero"><div class="pd-av" style="background:var(--bg-soft);color:var(--ink)">'+ty.i+'</div><div class="pd-name">'+esc(accName(a))+' <span class="cur-badge">'+a.cur+'</span></div><div class="pd-lb">'+typeLbl(ty)+' · '+curLabel(a.cur)+(a.archived?' · '+tr("بایگانی‌شده","archived"):'')+'</div><div class="pd-bal num" style="color:'+(neg?'var(--out)':'var(--ink)')+'">'+money(bal,a.cur)+'</div>'+(a.type==="card"&&neg?'<div class="pd-hint" style="color:var(--cc)">'+tr("بدهی کارت: ","Card debt: ")+money(-bal,a.cur)+'</div>':'')+'</div>';
-  h+='<div class="pd-acts"><button class="pd-act" data-act="quick-to" data-id="'+a.id+'"><span class="pa-ic">⬅️</span>'+tr("انتقال به این حساب","Transfer in")+'</button><button class="pd-act" data-act="quick-from" data-id="'+a.id+'"><span class="pa-ic">➡️</span>'+tr("انتقال از این حساب","Transfer out")+'</button>'+(a.type==="card"&&neg?'<button class="pd-act wide settle" data-act="pay-card" data-id="'+a.id+'"><span class="pa-ic">💳</span>'+tr("پرداخت قبض کارت ","Pay card bill ")+'('+money(-bal,a.cur)+')</button>':'')+'</div>';
+  if(a.type==="card"){
+    var debt=cardDebtOf(a.id);var lim=cardLimit(a);
+    if(lim>0){
+      var avail=lim-debt;var pct=Math.max(0,Math.min(100,Math.round(debt/lim*100)));
+      var over=avail<0;var barCol=over?"var(--out)":pct>80?"var(--debt)":"var(--cc)";
+      h+='<div class="limit-card"><div class="limit-top"><span class="limit-lb">'+tr("اعتبار باقی‌مانده","Available credit")+'</span><span class="limit-avail num" style="color:'+(over?"var(--out)":"var(--in)")+'">'+money(avail,a.cur)+'</span></div>'+
+        '<div class="limit-bar"><div class="limit-fill" style="width:'+pct+'%;background:'+barCol+'"></div></div>'+
+        '<div class="limit-sub"><span>'+tr("بدهی: ","Used: ")+'<span class="num">'+money(debt,a.cur)+'</span></span><span>'+tr("لیمیت: ","Limit: ")+'<span class="num">'+money(lim,a.cur)+'</span></span></div>'+
+        (over?'<div class="limit-sub" style="color:var(--out)">'+tr("⚠ از لیمیت رد شده‌ای","⚠ Over your limit")+'</div>':'')+
+      '</div>';
+    }
+    h+='<div class="card-guide">'+tr("💳 <b>راهنمای کارت اعتباری:</b><br>• <b>خرید با کارت</b> → دکمه‌ی «خرید با کارت» پایین (بدهی زیاد می‌شود، اعتبار کم می‌شود)<br>• <b>پرداخت قبض</b> (کامل یا تیکه‌ای) → دکمه‌ی «پرداخت قبض» (از بانک، بدهی کم می‌شود)<br>• برای تغییر لیمیت، دکمه‌ی ✏️ بالا را بزن","💳 <b>Credit card guide:</b><br>• <b>Buy with card</b> → the “Buy with card” button below (debt goes up, available credit goes down)<br>• <b>Pay bill</b> (full or partial) → the “Pay bill” button (from Bank, debt goes down)<br>• To change the limit, tap ✏️ at the top")+'</div>';
+  }
+  if(a.type==="card"){
+    h+='<div class="pd-acts"><button class="pd-act" data-act="buy-card" data-id="'+a.id+'"><span class="pa-ic">🛒</span>'+tr("خرید با کارت","Buy with card")+'</button><button class="pd-act" data-act="pay-card" data-id="'+a.id+'"><span class="pa-ic">💳</span>'+tr("پرداخت قبض","Pay bill")+(debt>0?' ('+money(debt,a.cur)+')':'')+'</button><button class="pd-act" data-act="quick-to" data-id="'+a.id+'"><span class="pa-ic">⬅️</span>'+tr("انتقال به","Transfer in")+'</button><button class="pd-act" data-act="quick-from" data-id="'+a.id+'"><span class="pa-ic">➡️</span>'+tr("انتقال از","Transfer out")+'</button></div>';
+  }else{
+    h+='<div class="pd-acts"><button class="pd-act" data-act="quick-to" data-id="'+a.id+'"><span class="pa-ic">⬅️</span>'+tr("انتقال به این حساب","Transfer in")+'</button><button class="pd-act" data-act="quick-from" data-id="'+a.id+'"><span class="pa-ic">➡️</span>'+tr("انتقال از این حساب","Transfer out")+'</button></div>';
+  }
   h+='<div class="sec"><span class="sec-t">'+tr("تراکنش‌های این حساب","This account\u2019s transactions")+'</span></div><div class="feed">';
   if(!mine.length)h+='<div class="empty"><span class="em">📭</span>'+tr("هنوز تراکنشی روی این حساب نیست","No transactions on this account yet")+'</div>';
   else mine.slice().reverse().forEach(function(t){h+=acctTxRow(t,a);});
@@ -810,7 +839,7 @@ function viewSettings(){
   h+='<div class="set-card"><div class="set-row"><div><div class="set-lb">'+tr("پشتیبان‌گیری","Backup")+'</div><div class="set-d">'+tr("یک نسخه از کل داده‌ها بگیر یا بازیابی کن","Export a full copy or restore")+'</div></div></div><div class="set-row" style="gap:8px"><button class="set-btn" data-act="export" style="flex:1">'+tr("📤 گرفتن پشتیبان","📤 Export")+'</button><button class="set-btn" data-act="import" style="flex:1">'+tr("📥 بازیابی","📥 Restore")+'</button></div>'+(latestBackup()?'<div class="set-row"><button class="set-btn" data-act="restore-backup" style="width:100%">'+tr("♻️ بازگردانی از پشتیبان خودکار (","♻️ Restore auto-backup (")+latestBackup().d+')</button></div>':'')+'</div>';
   h+='<div class="set-card"><div class="set-row"><div><div class="set-lb">'+tr("☁️ سینک با گوگل‌شیت","☁️ Google Sheets sync")+' <span style="font-size:10px;color:'+(synced?'var(--in)':'var(--ink-3)')+'">'+(synced?tr("· متصل","· connected"):tr("· خاموش","· off"))+'</span></div><div class="set-d">'+tr("اختیاری — داده‌ها بین دستگاه‌ها همگام شود","Optional — sync data across devices")+'</div></div></div><div class="set-row" style="display:block"><input class="fld" id="sy-url" placeholder="'+tr("آدرس Apps Script","Apps Script URL")+'" value="'+esc(S.syncUrl)+'" style="margin-bottom:8px;direction:ltr;text-align:left"><input class="fld" id="sy-token" placeholder="'+tr("توکن مخفی","Secret token")+'" value="'+esc(S.syncToken)+'" style="direction:ltr;text-align:left"><div style="display:flex;gap:8px;margin-top:9px"><button class="set-btn" data-act="sync-test" style="flex:1">'+tr("اتصال","Connect")+'</button><button class="set-btn" data-act="sync-pull" style="flex:1">'+tr("⬇ خواندن","⬇ Pull")+'</button><button class="set-btn" data-act="sync-push" style="flex:1">'+tr("⬆ ذخیره","⬆ Push")+'</button></div><button class="set-btn" data-act="show-script" style="width:100%;margin-top:8px">'+tr("📄 دیدن کد Apps Script","📄 View Apps Script code")+'</button></div></div>';
   h+='<div class="danger-card" data-act="reset"><span class="dl">'+tr("🗑 پاک‌کردن همه‌چیز","🗑 Erase everything")+'</span><span style="color:var(--out);font-size:18px">'+tr("›","‹")+'</span></div>';
-  h+='<div class="app-ver">'+tr("حساب من","My Money")+' · v3.6 · '+tr("ساخته‌شده با ❤️","Made with ❤️")+'</div>';
+  h+='<div class="app-ver">'+tr("حساب من","My Money")+' · v3.7 · '+tr("ساخته‌شده با ❤️","Made with ❤️")+'</div>';
   return h;
 }
 function viewNav(){var items=[["home","🏠",tr("خانه","Home")],["people","🤝",tr("افراد","People")],["__add__","",""],["report","📊",tr("گزارش","Report")],["settings","⚙️",tr("تنظیمات","Settings")]];var h='<div class="nav">';items.forEach(function(it){if(it[0]==="__add__"){h+='<button class="nav-add" data-act="quickadd">＋</button>';}else{var on=(S.page===it[0])||(it[0]==="home"&&(S.page==="account"||S.page==="history"));h+='<button class="nav-btn'+(on?' on':'')+'" data-act="goto" data-page="'+it[0]+'"><span class="ni">'+it[1]+'</span>'+it[2]+'</button>';}});h+='</div>';return h;}
@@ -842,7 +871,7 @@ function transferPreview(fromId,toId,amtOut,amtIn){var ao=num(amtOut),ai=num(amt
 
 function mQuickAdd(){return sheetHead(tr("چی می‌خوای ثبت کنی؟","What do you want to add?"))+'<div class="add-grid"><div class="add-opt" data-act="open-modal" data-m="income"><div class="ao-ic" style="background:var(--in-soft)">⬆️</div><div class="ao-t">'+tr("درآمد","Income")+'</div><div class="ao-d">'+tr("پول وارد حساب شد","Money came in")+'</div></div><div class="add-opt" data-act="open-modal" data-m="expense"><div class="ao-ic" style="background:var(--out-soft)">⬇️</div><div class="ao-t">'+tr("خرج","Spending")+'</div><div class="ao-d">'+tr("پول خرج کردی","Money went out")+'</div></div><div class="add-opt" data-act="open-modal" data-m="transfer"><div class="ao-ic" style="background:var(--blue-soft)">🔄</div><div class="ao-t">'+tr("انتقال","Transfer")+'</div><div class="ao-d">'+tr("جابه‌جایی بین حساب‌ها","Move between accounts")+'</div></div><div class="add-opt" data-act="open-modal" data-m="debt"><div class="ao-ic" style="background:var(--debt-soft)">🤝</div><div class="ao-t">'+tr("قرض / بدهی","Loan / debt")+'</div><div class="ao-d">'+tr("به کسی دادی یا گرفتی","Lent or borrowed")+'</div></div></div>';}
 function mIncome(){var f=S.form;var aid=f.accountId||defaultAccountId();var cur=accCur(aid);return sheetHead(tr("ثبت درآمد","Add income"))+'<label class="lb">'+tr("مبلغ","Amount")+' ('+cur+')</label><input class="amt-field is-in num" id="m-amt" type="number" inputmode="decimal" placeholder="0" value="'+esc(f.amount||"")+'"><label class="lb">'+tr("به کدام حساب؟","Into which account?")+'</label><select class="fld" id="m-account" data-act="pickacct">'+accountOptions(aid)+'</select><label class="lb">'+tr("منبع","Source")+'</label>'+catGrid(INC_CATS,f.cat||"salary","cat")+'<label class="lb">'+tr("توضیح (اختیاری)","Note (optional)")+'</label><input class="fld" id="m-note" placeholder="'+tr("مثلاً حقوق","e.g. salary")+'" value="'+esc(f.note||"")+'"><label class="lb">'+tr("تاریخ","Date")+'</label><input class="fld num" id="m-date" type="date" value="'+esc(f.date||td())+'" style="direction:ltr">'+acctPreview(aid,"in",f.amount)+errBox()+'<button class="btn-save in" data-act="save-income">'+tr("ثبت درآمد","Save income")+'</button>';}
-function mExpense(){var f=S.form;var aid=f.accountId||defaultAccountId();var cur=accCur(aid);var acc=accById(aid);return sheetHead(tr("ثبت خرج","Add spending"))+'<label class="lb">'+tr("مبلغ","Amount")+' ('+cur+')</label><input class="amt-field is-out num" id="m-amt" type="number" inputmode="decimal" placeholder="0" value="'+esc(f.amount||"")+'"><label class="lb">'+tr("از کدام حساب؟","From which account?")+'</label><select class="fld" id="m-account" data-act="pickacct">'+accountOptions(aid)+'</select>'+(acc&&acc.type==="card"?'<div class="note-line" style="color:var(--cc)">'+tr("💳 با کارت اعتباری: بدهی کارت زیاد می‌شود (پول نقد کم نمی‌شود).","💳 On a credit card: card debt increases (no cash is spent).")+'</div>':'')+'<label class="lb">'+tr("دسته","Category")+'</label>'+catGrid(EXP_CATS,f.cat||"food","cat")+'<label class="lb">'+tr("توضیح (اختیاری)","Note (optional)")+'</label><input class="fld" id="m-note" placeholder="'+tr("برای چی بود؟","What was it for?")+'" value="'+esc(f.note||"")+'"><label class="lb">'+tr("تاریخ","Date")+'</label><input class="fld num" id="m-date" type="date" value="'+esc(f.date||td())+'" style="direction:ltr">'+acctPreview(aid,"out",f.amount)+errBox()+'<button class="btn-save out" data-act="save-expense">'+tr("ثبت خرج","Save spending")+'</button>';}
+function mExpense(){var f=S.form;var aid=f.accountId||defaultAccountId();var cur=accCur(aid);var acc=accById(aid);return sheetHead(tr("ثبت خرج","Add spending"))+'<label class="lb">'+tr("مبلغ","Amount")+' ('+cur+')</label><input class="amt-field is-out num" id="m-amt" type="number" inputmode="decimal" placeholder="0" value="'+esc(f.amount||"")+'"><label class="lb">'+tr("از کدام حساب؟","From which account?")+'</label><select class="fld" id="m-account" data-act="pickacct">'+accountOptions(aid)+'</select>'+(acc&&acc.type==="card"?'<div class="note-line" style="color:var(--cc)">'+tr("💳 با کارت اعتباری: بدهی کارت زیاد می‌شود (پول نقد کم نمی‌شود).","💳 On a credit card: card debt increases (no cash is spent).")+(cardAvailable(acc)!=null?'<br>'+tr("اعتبار باقی‌مانده: ","Available credit: ")+money(cardAvailable(acc),acc.cur):'')+'</div>':'')+'<label class="lb">'+tr("دسته","Category")+'</label>'+catGrid(EXP_CATS,f.cat||"food","cat")+'<label class="lb">'+tr("توضیح (اختیاری)","Note (optional)")+'</label><input class="fld" id="m-note" placeholder="'+tr("برای چی بود؟","What was it for?")+'" value="'+esc(f.note||"")+'"><label class="lb">'+tr("تاریخ","Date")+'</label><input class="fld num" id="m-date" type="date" value="'+esc(f.date||td())+'" style="direction:ltr">'+acctPreview(aid,"out",f.amount)+errBox()+'<button class="btn-save out" data-act="save-expense">'+tr("ثبت خرج","Save spending")+'</button>';}
 function mTransfer(){
   var f=S.form;var accs=activeAccounts();var editing=!!f.editId;
   if(accs.length<2)return sheetHead(tr("انتقال","Transfer"))+'<div class="empty"><span class="em">🔄</span>'+tr("برای انتقال به حداقل دو حساب نیاز داری","You need at least two accounts to transfer")+'</div>';
@@ -938,7 +967,7 @@ function mAccount(){
     '<label class="lb">'+tr("نوع","Type")+'</label><div class="cat-grid">'+ACC_TYPES.map(function(ty){return '<button class="cat-btn'+(type===ty.id?' sel':'')+'" data-act="setacctype" data-t="'+ty.id+'"><span class="ci">'+ty.i+'</span><span class="cl">'+typeLbl(ty)+'</span></button>';}).join('')+'</div>'+
     '<label class="lb">'+tr("ارز","Currency")+'</label><div class="seg" style="width:max-content"><button class="'+(cur==="₱"?"on":"")+'" data-act="setacccur" data-c="₱">₱ '+tr("پزو","Peso")+'</button><button class="'+(cur==="$"?"on":"")+'" data-act="setacccur" data-c="$">$ '+tr("دلار","Dollar")+'</button></div>'+
     '<label class="lb">'+tr("موجودی اولیه","Opening balance")+' ('+cur+')</label><input class="fld num" id="a-openbal" type="number" inputmode="decimal" value="'+esc(openBal)+'" style="font-size:18px;font-weight:800;text-align:center">'+
-    (type==="card"?'<div class="note-line" style="color:var(--cc)">'+tr("کارت اعتباری: موجودی معمولاً صفر است و با خرج، منفی (بدهی) می‌شود.","Credit card: balance is usually 0 and goes negative (debt) as you spend.")+'</div>':'')+
+    (type==="card"?'<div class="note-line" style="color:var(--cc)">'+tr("کارت اعتباری: موجودی معمولاً صفر است و با خرج، منفی (بدهی) می‌شود.","Credit card: balance is usually 0 and goes negative (debt) as you spend.")+'</div>'+'<label class="lb">'+tr("لیمیت کارت (سقف اعتبار)","Credit limit")+' ('+cur+')</label><input class="fld num" id="a-limit" type="number" inputmode="decimal" value="'+esc(f.limit!=null?f.limit:(a&&a.limit?a.limit:""))+'" placeholder="'+tr("مثلاً ۵۰۰۰۰ — خالی = بدون لیمیت","e.g. 50000 — empty = no limit")+'" style="font-size:16px;text-align:center;font-weight:800"><div class="note-line">'+tr("اعتبار باقی‌مانده = لیمیت − بدهی فعلی. هر خرید کم و هر پرداخت زیادش می‌کند. لیمیت را هر وقت بانک بالا برد، همین‌جا عوض کن.","Available = limit − current debt. Purchases reduce it, payments restore it. If the bank raises your limit, change it here.")+'</div>':'')+
     errBox()+'<button class="btn-save ink" data-act="save-account">'+tr("ذخیره","Save")+'</button>';
   if(editing){
     h+='<button class="btn-ghost" data-act="toggle-archive" data-id="'+a.id+'">'+(a.archived?tr("↩️ خارج‌کردن از بایگانی","↩️ Unarchive"):tr("📦 بایگانی (مخفی‌کردن بدون حذف)","📦 Archive (hide without deleting)"))+'</button>';
@@ -965,6 +994,7 @@ function captureModalInputs(){
   var to=g("m-to");if(to)S.form.toId=to.value;
   var an=g("a-name");if(an)S.form.name=an.value;
   var ob=g("a-openbal");if(ob)S.form.openBal=ob.value;
+  var lm=g("a-limit");if(lm)S.form.limit=lm.value;
 }
 function closeModal(){S.modal=null;S.modalData={};S.form={};S.formErr="";render();}
 
@@ -1033,6 +1063,7 @@ function handleAction(act,el,ev){
         case "quick-to":S.modal="transfer";S.form={date:td(),toId:id};S.formErr="";render();break;
         case "quick-from":S.modal="transfer";S.form={date:td(),fromId:id};S.formErr="";render();break;
         case "pay-card":openPayCard(id);break;
+        case "buy-card":S.modal="expense";S.form={date:td(),accountId:id};S.formErr="";render();break;
         case "setcat":captureModalInputs();S.form[el.getAttribute("data-key")]=el.getAttribute("data-cat");render();break;
         case "setdir":captureModalInputs();S.form.dir=el.getAttribute("data-dir");render();break;
         case "setmode":captureModalInputs();S.form.mode=el.getAttribute("data-mode");render();break;
@@ -1059,7 +1090,7 @@ function handleAction(act,el,ev){
 
 /* ذخیره‌ها */
 function saveIncome(){captureModalInputs();var f=S.form;var e=vAmount(f.amount)||vDate(f.date);if(e){S.formErr=e;render();return;}S.formErr="";addTx({kind:"income",amount:num(f.amount),accountId:f.accountId||defaultAccountId(),category:f.cat||"salary",note:(f.note||"").trim(),date:f.date||td()});closeModal();toast(tr("درآمد ثبت شد ✓","Income saved ✓"));}
-function saveExpense(){captureModalInputs();var f=S.form;var e=vAmount(f.amount)||vDate(f.date);if(e){S.formErr=e;render();return;}S.formErr="";addTx({kind:"expense",amount:num(f.amount),accountId:f.accountId||defaultAccountId(),category:f.cat||"food",note:(f.note||"").trim(),date:f.date||td()});closeModal();toast(tr("خرج ثبت شد ✓","Spending saved ✓"));}
+function saveExpense(){captureModalInputs();var f=S.form;var e=vAmount(f.amount)||vDate(f.date);if(e){S.formErr=e;render();return;}var aidX=f.accountId||defaultAccountId();var accX=accById(aidX);if(accX&&accX.type==="card"){var availX=cardAvailable(accX);if(availX!=null&&num(f.amount)>availX){if(!confirm(tr("⚠ این خرید از اعتبار باقی‌مانده‌ی کارت بیشتر است.\nباقی‌مانده: ","⚠ This purchase exceeds your available card credit.\nAvailable: ")+money(availX,accX.cur)+tr("\nمبلغ: ","\nAmount: ")+money(num(f.amount),accX.cur)+tr("\nبازهم ثبت شود؟","\nRecord it anyway?")))return;}}S.formErr="";addTx({kind:"expense",amount:num(f.amount),accountId:aidX,category:f.cat||"food",note:(f.note||"").trim(),date:f.date||td()});closeModal();toast(tr("خرج ثبت شد ✓","Spending saved ✓"));}
 function saveTransfer(){
   captureModalInputs();var f=S.form;var accs=activeAccounts();
   var fromId=f.fromId||(accs[0]&&accs[0].id);var toId=f.toId||(accs.find(function(a){return a.id!==fromId;})||{}).id;
@@ -1134,15 +1165,15 @@ function saveEditDebtTx(){
 }
 function doDeleteTx(id){if(!confirm(tr("این تراکنش حذف شود؟","Delete this transaction?")))return;deleteTx(id);S.modal=null;S.modalData={};S.form={};S.expanded=null;render();toast(tr("حذف شد","Deleted"));}
 function doDeletePerson(id){var cnt=S.tx.filter(function(t){return t.personId===id;}).length;if(!confirm(tr("این طرف‌حساب و ","Delete this person and their ")+cnt+tr(" تراکنشش حذف شوند؟ موجودی حساب‌ها دوباره محاسبه می‌شود."," transactions? Balances will be recalculated.")))return;S.tx=S.tx.filter(function(t){return t.personId!==id;});S.people=S.people.filter(function(p){return p.id!==id;});persist();S.modal=null;S.personId=null;S.page="people";render();toast(tr("حذف شد","Deleted"));}
-function openPayCard(cardId){var card=accById(cardId);if(!card)return;var debt=-accBalance(cardId);if(debt<=0){toast(tr("این کارت بدهی ندارد","This card has no debt"));return;}var from=defaultAccountId(card.cur);if(from===cardId)from=null;S.modal="transfer";S.form={date:td(),fromId:from,toId:cardId,amount:String(Math.round(debt)),note:tr("پرداخت قبض کارت","Card bill payment")};S.formErr="";render();}
+function openPayCard(cardId){var card=accById(cardId);if(!card)return;var debt=-accBalance(cardId);if(debt<=0){toast(tr("این کارت بدهی ندارد","This card has no debt"));return;}var from=null;var accs=activeAccounts();for(var i=0;i<accs.length;i++){if(accs[i].type==="bank"&&accs[i].cur===card.cur){from=accs[i].id;break;}}if(!from)from=defaultAccountId(card.cur);if(from===cardId)from=null;S.modal="transfer";S.form={date:td(),fromId:from,toId:cardId,amount:String(Math.round(debt)),note:tr("پرداخت قبض کارت","Card bill payment")};S.formErr="";render();}
 function saveAccount(){
   captureModalInputs();var f=S.form;var editing=!!S.modalData.id;
   if(!f.name||!f.name.trim()){S.formErr=tr("نام حساب لازم است","Account name is required");render();return;}
   var type=f.type||"cash";var cur=f.cur||"₱";var openBal=num(f.openBal);
   if(editing){var a=accById(S.modalData.id);if(a){
     if(a.cur!==cur){var used=S.tx.some(function(t){return t.accountId===a.id||t.fromId===a.id||t.toId===a.id;});if(used&&!confirm(tr("این حساب تراکنش دارد؛ عوض‌کردن ارز، معنیِ مبالغ قبلی را عوض می‌کند.\nادامه؟","This account has transactions; changing currency changes the meaning of past amounts.\nContinue?"))){return;}}
-    a.name=f.name.trim();a.type=type;a.cur=cur;a.openBal=openBal;}}
-  else{S.accounts.push({id:uid(),name:f.name.trim(),type:type,cur:cur,openBal:openBal,archived:false});}
+    a.name=f.name.trim();a.type=type;a.cur=cur;a.openBal=openBal;a.limit=(type==='card'?num(f.limit):0);}}
+  else{S.accounts.push({id:uid(),name:f.name.trim(),type:type,cur:cur,openBal:openBal,limit:(type==='card'?num(f.limit):0),archived:false});}
   S.formErr="";persist();closeModal();toast(tr("حساب ذخیره شد ✓","Account saved ✓"));
 }
 function doToggleArchive(id){
