@@ -579,7 +579,7 @@ function bindSetup(){
 
 function viewHome(){
   var L=buildLedger();var pNet=curNet("₱");var incP=totalIncomeCur("₱"),spP=totalSpentCur("₱");
-  var h='<div class="top"><div><div class="top-title">'+tr("سلام 👋","Hi 👋")+'</div><div class="top-sub">'+fullDate(td())+' · v3.7</div></div>'+
+  var h='<div class="top"><div><div class="top-title">'+tr("سلام 👋","Hi 👋")+'</div><div class="top-sub">'+fullDate(td())+' · v3.8</div></div>'+
     '<div class="top-acts">'+(S.syncing?'<div class="icon-btn" style="position:relative"><span class="sync-dot"></span>☁️</div>':'')+'<button class="icon-btn" data-act="lang">'+(S.lang==="en"?'فا':'EN')+'</button><button class="icon-btn" data-act="theme">'+(S.dark?'☀️':'🌙')+'</button></div></div>';
   h+='<div class="hero"><div class="hero-lb">'+tr("دارایی پزو","Peso balance")+'</div><div class="hero-amt num'+(pNet<0?' neg':'')+'">'+money(pNet,"₱")+'</div>'+
     '<div class="hero-grid"><div class="hero-cell"><div class="hc-lb">'+tr("⬆ درآمد","⬆ Income")+'</div><div class="hc-val num" style="color:var(--in)">'+money(incP,"₱")+'</div></div>'+
@@ -839,7 +839,7 @@ function viewSettings(){
   h+='<div class="set-card"><div class="set-row"><div><div class="set-lb">'+tr("پشتیبان‌گیری","Backup")+'</div><div class="set-d">'+tr("یک نسخه از کل داده‌ها بگیر یا بازیابی کن","Export a full copy or restore")+'</div></div></div><div class="set-row" style="gap:8px"><button class="set-btn" data-act="export" style="flex:1">'+tr("📤 گرفتن پشتیبان","📤 Export")+'</button><button class="set-btn" data-act="import" style="flex:1">'+tr("📥 بازیابی","📥 Restore")+'</button></div>'+(latestBackup()?'<div class="set-row"><button class="set-btn" data-act="restore-backup" style="width:100%">'+tr("♻️ بازگردانی از پشتیبان خودکار (","♻️ Restore auto-backup (")+latestBackup().d+')</button></div>':'')+'</div>';
   h+='<div class="set-card"><div class="set-row"><div><div class="set-lb">'+tr("☁️ سینک با گوگل‌شیت","☁️ Google Sheets sync")+' <span style="font-size:10px;color:'+(synced?'var(--in)':'var(--ink-3)')+'">'+(synced?tr("· متصل","· connected"):tr("· خاموش","· off"))+'</span></div><div class="set-d">'+tr("اختیاری — داده‌ها بین دستگاه‌ها همگام شود","Optional — sync data across devices")+'</div></div></div><div class="set-row" style="display:block"><input class="fld" id="sy-url" placeholder="'+tr("آدرس Apps Script","Apps Script URL")+'" value="'+esc(S.syncUrl)+'" style="margin-bottom:8px;direction:ltr;text-align:left"><input class="fld" id="sy-token" placeholder="'+tr("توکن مخفی","Secret token")+'" value="'+esc(S.syncToken)+'" style="direction:ltr;text-align:left"><div style="display:flex;gap:8px;margin-top:9px"><button class="set-btn" data-act="sync-test" style="flex:1">'+tr("اتصال","Connect")+'</button><button class="set-btn" data-act="sync-pull" style="flex:1">'+tr("⬇ خواندن","⬇ Pull")+'</button><button class="set-btn" data-act="sync-push" style="flex:1">'+tr("⬆ ذخیره","⬆ Push")+'</button></div><button class="set-btn" data-act="show-script" style="width:100%;margin-top:8px">'+tr("📄 دیدن کد Apps Script","📄 View Apps Script code")+'</button></div></div>';
   h+='<div class="danger-card" data-act="reset"><span class="dl">'+tr("🗑 پاک‌کردن همه‌چیز","🗑 Erase everything")+'</span><span style="color:var(--out);font-size:18px">'+tr("›","‹")+'</span></div>';
-  h+='<div class="app-ver">'+tr("حساب من","My Money")+' · v3.7 · '+tr("ساخته‌شده با ❤️","Made with ❤️")+'</div>';
+  h+='<div class="app-ver">'+tr("حساب من","My Money")+' · v3.8 · '+tr("ساخته‌شده با ❤️","Made with ❤️")+'</div>';
   return h;
 }
 function viewNav(){var items=[["home","🏠",tr("خانه","Home")],["people","🤝",tr("افراد","People")],["__add__","",""],["report","📊",tr("گزارش","Report")],["settings","⚙️",tr("تنظیمات","Settings")]];var h='<div class="nav">';items.forEach(function(it){if(it[0]==="__add__"){h+='<button class="nav-add" data-act="quickadd">＋</button>';}else{var on=(S.page===it[0])||(it[0]==="home"&&(S.page==="account"||S.page==="history"));h+='<button class="nav-btn'+(on?' on':'')+'" data-act="goto" data-page="'+it[0]+'"><span class="ni">'+it[1]+'</span>'+it[2]+'</button>';}});h+='</div>';return h;}
@@ -961,13 +961,16 @@ function mEditDebtTx(){
 }
 function mAccount(){
   var editing=!!S.modalData.id;var a=editing?accById(S.modalData.id):null;var f=S.form;
-  var name=f.name!=null?f.name:(a?accName(a):"");var type=f.type||(a?a.type:"cash");var cur=f.cur||(a?a.cur:"₱");var openBal=f.openBal!=null?f.openBal:(a?a.openBal:0);
+  var name=f.name!=null?f.name:(a?accName(a):"");var type=f.type||(a?a.type:"cash");var cur=f.cur||(a?a.cur:"₱");var openBal=f.openBal!=null?f.openBal:(a?a.openBal:0);var limitVal=f.limit!=null?f.limit:(a&&a.limit?a.limit:"");
   var h=sheetHead(editing?tr("ویرایش حساب","Edit account"):tr("حساب جدید","New account"))+
     '<label class="lb">'+tr("نام حساب","Account name")+'</label><input class="fld" id="a-name" placeholder="'+tr("مثلاً بانک ملی","e.g. Main bank")+'" value="'+esc(name)+'" style="font-size:16px;padding:15px">'+
     '<label class="lb">'+tr("نوع","Type")+'</label><div class="cat-grid">'+ACC_TYPES.map(function(ty){return '<button class="cat-btn'+(type===ty.id?' sel':'')+'" data-act="setacctype" data-t="'+ty.id+'"><span class="ci">'+ty.i+'</span><span class="cl">'+typeLbl(ty)+'</span></button>';}).join('')+'</div>'+
     '<label class="lb">'+tr("ارز","Currency")+'</label><div class="seg" style="width:max-content"><button class="'+(cur==="₱"?"on":"")+'" data-act="setacccur" data-c="₱">₱ '+tr("پزو","Peso")+'</button><button class="'+(cur==="$"?"on":"")+'" data-act="setacccur" data-c="$">$ '+tr("دلار","Dollar")+'</button></div>'+
-    '<label class="lb">'+tr("موجودی اولیه","Opening balance")+' ('+cur+')</label><input class="fld num" id="a-openbal" type="number" inputmode="decimal" value="'+esc(openBal)+'" style="font-size:18px;font-weight:800;text-align:center">'+
-    (type==="card"?'<div class="note-line" style="color:var(--cc)">'+tr("کارت اعتباری: موجودی معمولاً صفر است و با خرج، منفی (بدهی) می‌شود.","Credit card: balance is usually 0 and goes negative (debt) as you spend.")+'</div>'+'<label class="lb">'+tr("لیمیت کارت (سقف اعتبار)","Credit limit")+' ('+cur+')</label><input class="fld num" id="a-limit" type="number" inputmode="decimal" value="'+esc(f.limit!=null?f.limit:(a&&a.limit?a.limit:""))+'" placeholder="'+tr("مثلاً ۵۰۰۰۰ — خالی = بدون لیمیت","e.g. 50000 — empty = no limit")+'" style="font-size:16px;text-align:center;font-weight:800"><div class="note-line">'+tr("اعتبار باقی‌مانده = لیمیت − بدهی فعلی. هر خرید کم و هر پرداخت زیادش می‌کند. لیمیت را هر وقت بانک بالا برد، همین‌جا عوض کن.","Available = limit − current debt. Purchases reduce it, payments restore it. If the bank raises your limit, change it here.")+'</div>':'')+
+    (type==="card"
+      ? '<div class="note-line" style="color:var(--cc)">'+tr("💳 کارت اعتباری از صفر شروع می‌شود و با خرید، بدهی‌اش زیاد می‌شود. «موجودی اولیه» ندارد.","💳 A credit card starts at 0 and its debt grows as you spend. It has no opening balance.")+'</div>'
+        +'<label class="lb">'+tr("لیمیت کارت (سقف اعتبار)","Credit limit")+' ('+cur+')</label><input class="fld num" id="a-limit" type="number" inputmode="decimal" value="'+esc(limitVal)+'" placeholder="'+tr("مثلاً ۵۰۰۰۰ — خالی = بدون لیمیت","e.g. 50000 — empty = no limit")+'" style="font-size:20px;text-align:center;font-weight:800">'
+        +'<div class="note-line">'+tr("اعتبار باقی‌مانده = لیمیت − بدهی فعلی. هر خرید کم و هر پرداخت زیادش می‌کند. هر وقت بانک لیمیت را بالا برد، همین عدد را عوض کن.","Available = limit − current debt. Purchases reduce it, payments restore it. When the bank raises your limit, just change this number.")+'</div>'
+      : '<label class="lb">'+tr("موجودی اولیه","Opening balance")+' ('+cur+')</label><input class="fld num" id="a-openbal" type="number" inputmode="decimal" value="'+esc(openBal)+'" style="font-size:18px;font-weight:800;text-align:center">')+
     errBox()+'<button class="btn-save ink" data-act="save-account">'+tr("ذخیره","Save")+'</button>';
   if(editing){
     h+='<button class="btn-ghost" data-act="toggle-archive" data-id="'+a.id+'">'+(a.archived?tr("↩️ خارج‌کردن از بایگانی","↩️ Unarchive"):tr("📦 بایگانی (مخفی‌کردن بدون حذف)","📦 Archive (hide without deleting)"))+'</button>';
@@ -1168,12 +1171,14 @@ function doDeletePerson(id){var cnt=S.tx.filter(function(t){return t.personId===
 function openPayCard(cardId){var card=accById(cardId);if(!card)return;var debt=-accBalance(cardId);if(debt<=0){toast(tr("این کارت بدهی ندارد","This card has no debt"));return;}var from=null;var accs=activeAccounts();for(var i=0;i<accs.length;i++){if(accs[i].type==="bank"&&accs[i].cur===card.cur){from=accs[i].id;break;}}if(!from)from=defaultAccountId(card.cur);if(from===cardId)from=null;S.modal="transfer";S.form={date:td(),fromId:from,toId:cardId,amount:String(Math.round(debt)),note:tr("پرداخت قبض کارت","Card bill payment")};S.formErr="";render();}
 function saveAccount(){
   captureModalInputs();var f=S.form;var editing=!!S.modalData.id;
+  var aEdit=editing?accById(S.modalData.id):null;
   if(!f.name||!f.name.trim()){S.formErr=tr("نام حساب لازم است","Account name is required");render();return;}
-  var type=f.type||"cash";var cur=f.cur||"₱";var openBal=num(f.openBal);
+  var type=f.type||(aEdit?aEdit.type:"cash");var cur=f.cur||(aEdit?aEdit.cur:"₱");var openBal=(type==="card"?0:num(f.openBal));
+  var limitNew=(type==="card"?(f.limit!=null?num(f.limit):(aEdit&&aEdit.limit?aEdit.limit:0)):0);
   if(editing){var a=accById(S.modalData.id);if(a){
     if(a.cur!==cur){var used=S.tx.some(function(t){return t.accountId===a.id||t.fromId===a.id||t.toId===a.id;});if(used&&!confirm(tr("این حساب تراکنش دارد؛ عوض‌کردن ارز، معنیِ مبالغ قبلی را عوض می‌کند.\nادامه؟","This account has transactions; changing currency changes the meaning of past amounts.\nContinue?"))){return;}}
-    a.name=f.name.trim();a.type=type;a.cur=cur;a.openBal=openBal;a.limit=(type==='card'?num(f.limit):0);}}
-  else{S.accounts.push({id:uid(),name:f.name.trim(),type:type,cur:cur,openBal:openBal,limit:(type==='card'?num(f.limit):0),archived:false});}
+    a.name=f.name.trim();a.type=type;a.cur=cur;a.openBal=openBal;a.limit=limitNew;}}
+  else{S.accounts.push({id:uid(),name:f.name.trim(),type:type,cur:cur,openBal:openBal,limit:limitNew,archived:false});}
   S.formErr="";persist();closeModal();toast(tr("حساب ذخیره شد ✓","Account saved ✓"));
 }
 function doToggleArchive(id){
